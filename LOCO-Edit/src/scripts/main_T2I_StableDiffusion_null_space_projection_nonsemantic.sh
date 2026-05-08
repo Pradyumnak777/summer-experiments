@@ -1,11 +1,11 @@
 python main.py \
     --sh_file_name                          main_T2I_StableDiffusion_null_space_projection.sh           \
     --device                                cuda:0                                      \
-    --model_name                            stabilityai/stable-diffusion-2-1-base                      \
+    --model_name                            Manojb/stable-diffusion-2-1-base                      \
     --mask_model_name                       facebook/sam-vit-large                      \
-    --dataset_name                          Random                                      \
+    --dataset_name                          Examples                                      \
     --edit_prompt                           "a photo of a man wearing glasses"                  \
-    --for_prompt                            "a photo of a man"                          \
+    --for_prompt                            "a microscopic image of cells"                          \
     --neg_prompt                            ""                                          \
     --x_space_guidance_scale                0.2                                         \
     --x_space_guidance_num_step             16                                          \
@@ -18,10 +18,11 @@ python main.py \
     --null_space_projection                 True                                        \
     --pca_rank_null                         5                                           \
     --pca_rank                              5                                           \
-    --sampling_mode                         True                                       \
+    --sampling_mode                         False                                       \
     --mask_index                            1                                          \
     --tilda_v_score_type                    "null+(for-null)+(edit-null)"               \
     --dtype                                 fp32                                        \
-    --cache_folder                          <TODO>         \
+    --cache_folder                          /scratch/pbk5339/caches/hf/hub         \
     --vis_num                               2                                           \
-    --use_sega                              False
+    --use_sega                              False           \
+    --sample_idx                            0

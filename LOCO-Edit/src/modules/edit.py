@@ -506,6 +506,7 @@ class EditStableDiffusion(object):
         self.pca_device     = args.pca_device
         self.buffer_device  = args.buffer_device
         self.memory_bound   = args.memory_bound
+        self.sample_idx = args.sample_idx
 
         # path
         self.result_folder = os.path.join(args.result_folder, f"for_prompt_{args.for_prompt}_cfg{args.guidance_scale}_seed{args.seed}")
@@ -954,7 +955,9 @@ class EditStableDiffusion(object):
 
         # get latent code (zT -> zt)
         if self.dataset_name == 'Random':
-            zT = torch.randn(1, 4, 64, 64, dtype=self.dtype, device=self.device)
+            zT = torch.randn(1, 4, 64, 64, dtype=self.dtype, device=self.device) #creates new image from source prompt..
+        else:
+            zT = self.run_DDIMinversion(idx=self.sample_idx) #if we already have image, DDIM inversion is performed..
         
         self.EXP_NAME = "original"
         if (not os.path.exists(os.path.join(self.result_folder, "original.png"))) or (not os.path.exists(os.path.join(self.result_folder, "mask/mask.pt"))):
@@ -1204,7 +1207,7 @@ class EditStableDiffusion(object):
 
     # utils
     def _get_prompt_emb(self, prompt):
-        prompt_embeds = self.pipe.encode_prompt(
+        prompt_embeds = self.pipe._encode_prompt(
             prompt,
             device = self.device,
             num_images_per_prompt = 1,
@@ -1292,7 +1295,7 @@ class EditDeepFloydIF(object):
 
     def _get_prompt_emb(self, prompt):
 
-        prompt_embeds, _ = self.stage_1.encode_prompt(
+        prompt_embeds, _ = self.stage_1._encode_prompt(
             prompt,
             device = self.device,
             num_images_per_prompt = 1,

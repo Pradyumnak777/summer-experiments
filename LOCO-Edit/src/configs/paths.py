@@ -7,7 +7,8 @@ DATASET_PATHS = {
 	'LSUN_church'	: 'datasets/lsun-church',
 	
 	# stable diffusion 
-    'Examples'  	: 'datasets/examples',
+    # 'Examples'  	: 'datasets/examples',
+    'Examples': '/scratch/pbk5339/summer/LOCO-Edit/src/test_data'
 }
 
 MODEL_PATHS = {
