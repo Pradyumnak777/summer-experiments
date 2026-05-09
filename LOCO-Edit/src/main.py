@@ -1,9 +1,9 @@
 # this codebase is built on https://github.com/enkeejunior1/Diffusion-Pullback 
 import debugpy
-debugpy.listen(("0.0.0.0", 5678))
-print("Waiting for debugger attach...")
-debugpy.wait_for_client()
-print("Debugger attached! Running code...")
+# debugpy.listen(("0.0.0.0", 5678))
+# print("Waiting for debugger attach...")
+# debugpy.wait_for_client()
+# print("Debugger attached! Running code...")
 
 
 from utils.define_argparser import parse_args, preset

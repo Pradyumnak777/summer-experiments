@@ -5,11 +5,11 @@ python main.py \
     --mask_model_name                       facebook/sam-vit-large                      \
     --dataset_name                          Examples                                      \
     --edit_prompt                           "a photo of a man wearing glasses"                  \
-    --for_prompt                            "a microscopic image of cells"                          \
+    --for_prompt                            ""                          \
     --neg_prompt                            ""                                          \
-    --x_space_guidance_scale                0.2                                         \
+    --x_space_guidance_scale                0.35                                         \
     --x_space_guidance_num_step             16                                          \
-    --edit_t                                0.7                                         \
+    --edit_t                                0.1                                         \
     --run_edit_null_space_projection_zt     True                               \
     --note                                  "with_prompt"                               \
     --guidance_scale                        7.5                                         \
@@ -25,4 +25,7 @@ python main.py \
     --cache_folder                          /scratch/pbk5339/caches/hf/hub         \
     --vis_num                               2                                           \
     --use_sega                              False           \
-    --sample_idx                            0
+    --sample_idx                            0               \
+    --non_semantic                           True           \
+    --inv_steps                             100                                         \
+    --for_steps                             100
