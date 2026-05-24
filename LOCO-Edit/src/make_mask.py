@@ -4,8 +4,20 @@ import torch
 from PIL import Image
 
 def make_color_mask(img_path, kind, out_path, size=512):
-    img = Image.open(img_path).convert('RGB').resize((size, size))
-    a = np.array(img).astype(np.int16)   # [H,W,3]
+    img = Image.open(img_path).convert('RGB')
+
+    # match ImgDataset.__getitem__ exactly
+    w, h = img.size
+    crop_size = min(w, h)
+    left   = (w - crop_size) / 2
+    top    = (h - crop_size) / 2
+    right  = (w + crop_size) / 2
+    bottom = (h + crop_size) / 2
+    img = img.crop((left, top, right, bottom))
+    img = img.resize((size, size))
+
+    a = np.array(img).astype(np.int16)
+
     R, G, B = a[..., 0], a[..., 1], a[..., 2]
 
     if kind == 'green':
