@@ -959,6 +959,10 @@ class EditStableDiffusion(object):
         else:
             zT = self.run_DDIMinversion(idx=self.sample_idx) #if we already have image, DDIM inversion is performed..
         
+        '''
+        BELOW IS RESPONSIBLE FOR SAM MASKING!
+        '''
+        
         self.EXP_NAME = "original"
         if (not os.path.exists(os.path.join(self.result_folder, "original.png"))) or (not os.path.exists(os.path.join(self.result_folder, "mask/mask.pt"))):
             print("Generating images and creating masks......")
