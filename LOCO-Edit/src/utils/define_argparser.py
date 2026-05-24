@@ -122,6 +122,11 @@ def parse_args():
     parser.add_argument('--num_inference_steps',         type=int,       default=3,          required=False)
 
     parser.add_argument('--random_edit',                                type=str2bool,  default='False', required=False)
+    
+    #custom addition..
+    parser.add_argument('--mask_path', type=str, default='', required=False,
+                    help='Path to a pre-computed [3,512,512] bool mask .pt file')
+
     args = parser.parse_args()
     return args
 
