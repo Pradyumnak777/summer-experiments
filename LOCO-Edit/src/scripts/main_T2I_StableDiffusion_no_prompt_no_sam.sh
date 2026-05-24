@@ -10,7 +10,7 @@ python main.py \
     --neg_prompt                            ""                                           \
     --x_space_guidance_scale                0.35                                         \
     --x_space_guidance_num_step             16                                           \
-    --edit_t                                0.1                                          \
+    --edit_t                                0.3                                          \
     --run_edit_null_space_projection_zt     True                                         \
     --non_semantic                          True                                         \
     --note                                  "no_prompt_no_sam"                           \
@@ -19,7 +19,7 @@ python main.py \
     --seed                                  0                                            \
     --null_space_projection                 False                                        \
     --pca_rank_null                         5                                            \
-    --pca_rank                              5                                            \
+    --pca_rank                              20                                            \
     --sampling_mode                         False                                        \
     --tilda_v_score_type                    "null+(for-null)"                            \
     --dtype                                 fp32                                         \
@@ -29,4 +29,4 @@ python main.py \
     --sample_idx                            0                                            \
     --inv_steps                             100                                          \
     --for_steps                             100                                         \
-    ---mask_path   test_data/mask_green.pt \
+        --mask_path   masks/mask_green.pt \

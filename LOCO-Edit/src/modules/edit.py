@@ -984,6 +984,16 @@ class EditStableDiffusion(object):
             print(f'Loading mask from {self.mask_path}')
             mask = torch.load(self.mask_path, map_location=self.device).bool()
             assert mask.shape == (3, 512, 512), f'Expected [3,512,512], got {mask.shape}'
+
+            mask_dir = os.path.join(self.result_folder, "mask")
+            os.makedirs(mask_dir, exist_ok=True)
+            x0_orig = self.dataset[self.sample_idx]
+            x0_np = ((x0_orig[0].permute(1,2,0).cpu().float().numpy() + 1) / 2 * 255).clip(0,255).astype(np.uint8)
+            mask_np = mask[0].cpu().numpy()
+            overlay = x0_np.copy()
+            overlay[~mask_np] = (overlay[~mask_np] * 0.25).astype(np.uint8)
+            Image.fromarray(overlay).save(os.path.join(mask_dir, "mask_preview.png"))
+            torch.save(mask.cpu(), os.path.join(mask_dir, "mask.pt"))
         else:
             print('No mask_path given — using full-image mask')
             mask = torch.ones(3, 512, 512, dtype=torch.bool, device=self.device)
@@ -1000,7 +1010,7 @@ class EditStableDiffusion(object):
         )
         assert t_idx == self.edit_t_idx
 
-                
+                        
         '''
         BELOW IS ORIGINAL!
         '''
