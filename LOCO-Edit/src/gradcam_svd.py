@@ -11,11 +11,11 @@ from modules.edit import EditStableDiffusion
 
 
 def gradcam_for_direction(edit, zt, u_k, mask, target_module):
-    """Run one GradCAM pass for SVD direction with vector u_k."""
     feat_cache, grad_cache = {}, {}
 
     def fwd_hook(m, i, o):
         feat_cache['x'] = o[0] if isinstance(o, tuple) else o
+
     def bwd_hook(m, gi, go):
         grad_cache['x'] = go[0]
 
@@ -23,6 +23,10 @@ def gradcam_for_direction(edit, zt, u_k, mask, target_module):
     h2 = target_module.register_full_backward_hook(bwd_hook)
 
     try:
+        # zero grad BEFORE forward, not after
+        edit.unet.zero_grad(set_to_none=True)
+        edit.vae.zero_grad(set_to_none=True)
+
         zt_grad = zt.detach().clone().requires_grad_(True)
         t_idx = edit.edit_t_idx
         t = edit.scheduler.timesteps[t_idx]
@@ -32,27 +36,28 @@ def gradcam_for_direction(edit, zt, u_k, mask, target_module):
                 zt_grad, t, t_idx,
                 edit.for_prompt_emb, edit.edit_prompt_emb, edit.null_prompt_emb,
                 mask=mask, mode="null+(for-null)"
-            )   # [1, num_mask_pixels]
-            u_k_dev = u_k.to(x0_masked.device, x0_masked.dtype)
+            )
+            u_k_dev = u_k.detach().to(x0_masked.device, x0_masked.dtype)
             score = (x0_masked[0] * u_k_dev).sum()
+            score.backward(retain_graph=True)    # inside enable_grad
 
-        edit.unet.zero_grad(set_to_none=True)
-        edit.vae.zero_grad(set_to_none=True)
-        score.backward()
+        score_val = float(score.detach().cpu())
 
-        feat = feat_cache['x']        # [1, C, Hf, Wf]
-        grad = grad_cache['x']        # [1, C, Hf, Wf]
+        feat = feat_cache['x'].detach()
+        grad = grad_cache['x'].detach()
 
         weights = grad.mean(dim=(2, 3), keepdim=True)
         cam = F.relu((weights * feat).sum(dim=1, keepdim=True))
         cam = F.interpolate(cam.float(), size=(512, 512), mode='bilinear', align_corners=False)
-        cam = cam[0, 0].detach().cpu().numpy()
+        cam = cam[0, 0].cpu().numpy()
         if cam.max() > 1e-8:
             cam = cam / cam.max()
-        return cam, float(score.detach().cpu())
-    finally:
-        h1.remove(); h2.remove()
 
+        return cam, score_val
+
+    finally:
+        h1.remove()
+        h2.remove()
 
 def save_overlay(orig_rgb, cam, path, alpha=0.5):
     colored = (cm.jet(cam)[..., :3] * 255).astype(np.uint8)
@@ -96,8 +101,9 @@ if __name__ == '__main__':
     mask = torch.load(edit.mask_path, map_location=edit.device).bool()
 
     # original image (preprocessed, same as model sees)
-    x0_orig = edit.dataset[edit.sample_idx]
-    orig_rgb = ((x0_orig[0].permute(1,2,0).cpu().float().numpy() + 1) / 2 * 255).clip(0,255).astype(np.uint8)
+    orig_path = os.path.join(edit.result_folder, 'original.png')
+    assert os.path.exists(orig_path), 'original.png not found — run main.py first'
+    orig_rgb = np.array(Image.open(orig_path).convert('RGB').resize((512, 512)))
 
     out_dir = os.path.join(edit.result_folder, 'gradcam')
     os.makedirs(out_dir, exist_ok=True)
@@ -112,9 +118,10 @@ if __name__ == '__main__':
     '''
     target_module = edit.unet.up_blocks[2].resnets[-1]   # last ResBlock in up_blocks[2]
 
-    num_directions = min(5, u_modify.size(0))   # edit this to visualize more
+    num_directions = args.pca_rank   # edit this to visualize more
     for k in range(num_directions):
-        u_k = u_modify[k]
+        u_k = u_modify[:, k]
+        u_k = u_k / (u_k.norm() + 1e-8) #normalizing
         cam, score = gradcam_for_direction(edit, zt, u_k, mask, target_module)
         print(f'direction {k}: score={score:.4f}, cam max-region size={(cam>0.5).sum()}')
 
