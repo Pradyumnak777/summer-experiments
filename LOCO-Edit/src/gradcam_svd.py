@@ -10,7 +10,7 @@ from utils.define_argparser import parse_args, preset
 from modules.edit import EditStableDiffusion
 
 
-def gradcam_for_direction(edit, zt, u_k, mask, target_module):
+def gradcam_for_direction(edit, zt, vk, lam, mask, target_module):
     feat_cache, grad_cache = {}, {}
 
     def fwd_hook(m, i, o):
@@ -27,28 +27,43 @@ def gradcam_for_direction(edit, zt, u_k, mask, target_module):
         edit.unet.zero_grad(set_to_none=True)
         edit.vae.zero_grad(set_to_none=True)
 
-        zt_grad = zt.detach().clone().requires_grad_(True)
         t_idx = edit.edit_t_idx
         t = edit.scheduler.timesteps[t_idx]
 
-        with torch.enable_grad():
-            x0_masked = edit.get_x0(
-                zt_grad, t, t_idx,
-                edit.for_prompt_emb, edit.edit_prompt_emb, edit.null_prompt_emb,
-                mask=mask, mode="null+(for-null)"
-            )
-            u_k_dev = u_k.detach().to(x0_masked.device, x0_masked.dtype)
-            score = (x0_masked[0] * u_k_dev).sum()
-            score.backward(retain_graph=True)    # inside enable_grad
+        zt_base = zt.detach().clone()
+        zt_edit = zt_base + lam * vk.detach().view_as(zt_base)  # same operation as main.py
 
-        score_val = float(score.detach().cpu())
+        # baseline x0 — no gradient needed, computed outside graph
+        with torch.no_grad():
+            x0_base = edit.get_x0(
+                zt_base, t, t_idx,
+                edit.for_prompt_emb, edit.edit_prompt_emb, edit.null_prompt_emb,
+                mask=None, mode="null+(for-null)"
+            )
+        x0_base = x0_base.detach()
+
+        with torch.enable_grad():
+            x0_edited = edit.get_x0(
+                zt_edit, t, t_idx,
+                edit.for_prompt_emb, edit.edit_prompt_emb, edit.null_prompt_emb,
+                mask=None, mode="null+(for-null)"
+            )
+            # NOTE:!! this is the "logit" equivalent- total squared change in the masked region
+            # caused by applying vk, which is exactly what main.py produces as lambda varies
+            delta = x0_edited - x0_base
+            # scalar = delta[0][mask].pow(2).sum()
+            scalar = delta[0].pow(2).sum() #on whole image...
+
+            scalar.backward(retain_graph=True)    # inside enable_grad
+
+        score_val = float(scalar.detach().cpu())
 
         feat = feat_cache['x'].detach()
         grad = grad_cache['x'].detach()
 
-        weights = grad.mean(dim=(2, 3), keepdim=True)
-        cam = F.relu((weights * feat).sum(dim=1, keepdim=True))
-        cam = F.interpolate(cam.float(), size=(512, 512), mode='bilinear', align_corners=False)
+        weights = grad.mean(dim=(2, 3), keepdim=True) #weighted sum to get a final single matrix feature map
+        cam = F.relu((weights * feat).sum(dim=1, keepdim=True)) #relu to remove negatives..
+        cam = F.interpolate(cam.float(), size=(512, 512), mode='bilinear', align_corners=False) #interpolate to input img size..
         cam = cam[0, 0].cpu().numpy()
         if cam.max() > 1e-8:
             cam = cam / cam.max()
@@ -91,10 +106,10 @@ if __name__ == '__main__':
         edit.result_folder, 'basis',
         f'local_basis-{edit.edit_t}T-pca-rank-{args.pca_rank}-select-mask{args.mask_index}',
     )
-    u_modify_path = os.path.join(basis_dir, 'u-modify.pt')
-    assert os.path.exists(u_modify_path), f'missing {u_modify_path} — run main.py first'
-    u_modify = torch.load(u_modify_path, map_location=edit.device).type(edit.dtype)
-    print(f'loaded u_modify: {u_modify.shape}')
+    vT_modify_path = os.path.join(basis_dir, 'vT-modify.pt')
+    assert os.path.exists(vT_modify_path), f'missing {vT_modify_path} — run main.py first'
+    vT_modify = torch.load(vT_modify_path, map_location=edit.device).type(edit.dtype)
+    print(f'loaded vT_modify: {vT_modify.shape}')
 
     # mask used during SVD
     assert edit.mask_path and os.path.exists(edit.mask_path), 'mask_path not set'
@@ -116,13 +131,14 @@ if __name__ == '__main__':
     '''
     trying up block
     '''
-    target_module = edit.unet.up_blocks[2].resnets[-1]   # last ResBlock in up_blocks[2]
+    target_module = edit.unet.up_blocks[3].resnets[-1]   # last ResBlock in up_blocks[3]
+
+    lam = edit.x_space_guidance_scale * edit.x_space_guidance_edit_step  # same step size as main.py
 
     num_directions = args.pca_rank   # edit this to visualize more
-    for k in range(num_directions):
-        u_k = u_modify[:, k]
-        u_k = u_k / (u_k.norm() + 1e-8) #normalizing
-        cam, score = gradcam_for_direction(edit, zt, u_k, mask, target_module)
+    for k in range(num_directions): #this is top k..
+        vk = vT_modify[k] / (vT_modify[k].norm() + 1e-8) #normalizing
+        cam, score = gradcam_for_direction(edit, zt, vk, lam, mask, target_module)
         print(f'direction {k}: score={score:.4f}, cam max-region size={(cam>0.5).sum()}')
 
         save_overlay(orig_rgb, cam, os.path.join(out_dir, f'gradcam_dir{k:02d}.png'))
