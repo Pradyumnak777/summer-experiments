@@ -4,17 +4,17 @@ python main.py \
     --model_name                            Manojb/stable-diffusion-2-1-base        \
     --mask_model_name                       facebook/sam-vit-large                       \
     --dataset_name                          Examples                                     \
-    --for_prompt                            ""                                           \
+    --for_prompt                            "fluorescence microscopy, bright green and pink cells"                                           \
     --edit_prompt                           ""                                           \
-    --inv_prompt                            ""                                           \
+    --inv_prompt                            "fluorescence microscopy, bright green and magenta cells"                                           \
     --neg_prompt                            ""                                           \
     --x_space_guidance_scale                0.35                                         \
     --x_space_guidance_num_step             16                                           \
-    --edit_t                                0.3                                          \
+    --edit_t                                0.05                                          \
     --run_edit_null_space_projection_zt     True                                         \
     --non_semantic                          True                                         \
     --note                                  "no_prompt_no_sam"                           \
-    --guidance_scale                        1.0                                          \
+    --guidance_scale                        1.5                                          \
     --guidance_scale_edit                   1.0                                          \
     --seed                                  0                                            \
     --null_space_projection                 False                                        \

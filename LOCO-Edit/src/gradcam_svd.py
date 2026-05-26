@@ -112,8 +112,12 @@ if __name__ == '__main__':
     print(f'loaded vT_modify: {vT_modify.shape}')
 
     # mask used during SVD
-    assert edit.mask_path and os.path.exists(edit.mask_path), 'mask_path not set'
-    mask = torch.load(edit.mask_path, map_location=edit.device).bool()
+    if edit.mask_path and os.path.exists(edit.mask_path):
+        mask = torch.load(edit.mask_path, map_location=edit.device).bool()
+    else:
+        mask = torch.ones(3, 512, 512, dtype=torch.bool, device=edit.device)
+
+    # mask = torch.load(edit.mask_path, map_location=edit.device).bool()
 
     # original image (preprocessed, same as model sees)
     orig_path = os.path.join(edit.result_folder, 'original.png')

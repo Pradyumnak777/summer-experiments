@@ -970,73 +970,73 @@ class EditStableDiffusion(object):
         BELOW IS MODIFIED..
         '''
         
-        if not os.path.exists(os.path.join(self.result_folder, "original.png")):
-            print("Running DDIM forward to save original reconstruction...")
-            _, x0 = self.DDIMforwardsteps(
-                zT, t_start_idx=0, t_end_idx=-1,
-                for_prompt_emb=self.for_prompt_emb,
-                edit_prompt_emb=self.edit_prompt_emb,
-                null_prompt_emb=self.null_prompt_emb,
-                mode="null+(for-null)",
-            )
+        # if not os.path.exists(os.path.join(self.result_folder, "original.png")):
+        #     print("Running DDIM forward to save original reconstruction...")
+        #     _, x0 = self.DDIMforwardsteps(
+        #         zT, t_start_idx=0, t_end_idx=-1,
+        #         for_prompt_emb=self.for_prompt_emb,
+        #         edit_prompt_emb=self.edit_prompt_emb,
+        #         null_prompt_emb=self.null_prompt_emb,
+        #         mode="null+(for-null)",
+        #     )
 
-        if self.mask_path and os.path.exists(self.mask_path):
-            print(f'Loading mask from {self.mask_path}')
-            mask = torch.load(self.mask_path, map_location=self.device).bool()
-            assert mask.shape == (3, 512, 512), f'Expected [3,512,512], got {mask.shape}'
+        # if self.mask_path and os.path.exists(self.mask_path):
+        #     print(f'Loading mask from {self.mask_path}')
+        #     mask = torch.load(self.mask_path, map_location=self.device).bool()
+        #     assert mask.shape == (3, 512, 512), f'Expected [3,512,512], got {mask.shape}'
 
-            mask_dir = os.path.join(self.result_folder, "mask")
-            os.makedirs(mask_dir, exist_ok=True)
-            x0_orig = self.dataset[self.sample_idx]
-            x0_np = ((x0_orig[0].permute(1,2,0).cpu().float().numpy() + 1) / 2 * 255).clip(0,255).astype(np.uint8)
-            mask_np = mask[0].cpu().numpy()
-            overlay = x0_np.copy()
-            overlay[~mask_np] = (overlay[~mask_np] * 0.25).astype(np.uint8)
-            Image.fromarray(overlay).save(os.path.join(mask_dir, "mask_preview.png"))
-            torch.save(mask.cpu(), os.path.join(mask_dir, "mask.pt"))
-        else:
-            print('No mask_path given — using full-image mask')
-            mask = torch.ones(3, 512, 512, dtype=torch.bool, device=self.device)
+        #     mask_dir = os.path.join(self.result_folder, "mask")
+        #     os.makedirs(mask_dir, exist_ok=True)
+        #     x0_orig = self.dataset[self.sample_idx]
+        #     x0_np = ((x0_orig[0].permute(1,2,0).cpu().float().numpy() + 1) / 2 * 255).clip(0,255).astype(np.uint8)
+        #     mask_np = mask[0].cpu().numpy()
+        #     overlay = x0_np.copy()
+        #     overlay[~mask_np] = (overlay[~mask_np] * 0.25).astype(np.uint8)
+        #     Image.fromarray(overlay).save(os.path.join(mask_dir, "mask_preview.png"))
+        #     torch.save(mask.cpu(), os.path.join(mask_dir, "mask.pt"))
+        # else:
+        #     print('No mask_path given — using full-image mask')
+        #     mask = torch.ones(3, 512, 512, dtype=torch.bool, device=self.device)
 
-        if self.sampling_mode:
-            return None
+        # if self.sampling_mode:
+        #     return None
 
-        zt, t, t_idx = self.DDIMforwardsteps(
-            zT, t_start_idx=0, t_end_idx=self.edit_t_idx,
-            for_prompt_emb=self.for_prompt_emb,
-            edit_prompt_emb=self.edit_prompt_emb,
-            null_prompt_emb=self.null_prompt_emb,
-            mode="null+(for-null)",
-        )
-        assert t_idx == self.edit_t_idx
+        # zt, t, t_idx = self.DDIMforwardsteps(
+        #     zT, t_start_idx=0, t_end_idx=self.edit_t_idx,
+        #     for_prompt_emb=self.for_prompt_emb,
+        #     edit_prompt_emb=self.edit_prompt_emb,
+        #     null_prompt_emb=self.null_prompt_emb,
+        #     mode="null+(for-null)",
+        # )
+        # assert t_idx == self.edit_t_idx
 
                         
         '''
         BELOW IS ORIGINAL!
         '''
-        # if (not os.path.exists(os.path.join(self.result_folder, "original.png"))) or (not os.path.exists(os.path.join(self.result_folder, "mask/mask.pt"))):
-        #     print("Generating images and creating masks......")
-        #     _, x0 = self.DDIMforwardsteps(zT, t_start_idx=0, t_end_idx=-1, 
-        #                                   for_prompt_emb=self.for_prompt_emb, 
-        #                                   edit_prompt_emb=self.edit_prompt_emb, 
-        #                                   null_prompt_emb=self.null_prompt_emb,
-        #                                   mode="null+(for-null)")
-        #     masks = self.sam.mask_segmentation(Image.fromarray(np.array(x0[0].detach().cpu())), resolution=512)
+        if (not os.path.exists(os.path.join(self.result_folder, "original.png"))) or (not os.path.exists(os.path.join(self.result_folder, "mask/mask.pt"))):
+            print("Generating images and creating masks......")
+            _, x0 = self.DDIMforwardsteps(zT, t_start_idx=0, t_end_idx=-1, 
+                                          for_prompt_emb=self.for_prompt_emb, 
+                                          edit_prompt_emb=self.edit_prompt_emb, 
+                                          null_prompt_emb=self.null_prompt_emb,
+                                          mode="null+(for-null)")
+            masks = self.sam.mask_segmentation(Image.fromarray(np.array(x0[0].detach().cpu())), resolution=512)
 
-        # else:
-        #     print("Loading masks......")
-        #     masks = torch.load(os.path.join(self.result_folder, "mask/mask.pt"))
+        else:
+            print("Loading masks......")
+            masks = torch.load(os.path.join(self.result_folder, "mask/mask.pt"))
         
-        # if self.sampling_mode:
-        #     return None
-        # mask = masks[mask_index].squeeze(dim=0).repeat(3, 1, 1)
+        if self.sampling_mode:
+            return None
+        mask = masks[mask_index].squeeze(dim=0).repeat(3, 1, 1)
         
-        # zt, t, t_idx = self.DDIMforwardsteps(zT, t_start_idx=0, t_end_idx=self.edit_t_idx, 
-        #                                     for_prompt_emb=self.for_prompt_emb, 
-        #                                     edit_prompt_emb=self.edit_prompt_emb, 
-        #                                     null_prompt_emb=self.null_prompt_emb,
-        #                                     mode="null+(for-null)")
-        # assert t_idx == self.edit_t_idx
+        zt, t, t_idx = self.DDIMforwardsteps(zT, t_start_idx=0, t_end_idx=self.edit_t_idx, 
+                                            for_prompt_emb=self.for_prompt_emb, 
+                                            edit_prompt_emb=self.edit_prompt_emb, 
+                                            null_prompt_emb=self.null_prompt_emb,
+                                            mode="null+(for-null)")
+        assert t_idx == self.edit_t_idx
 
         # get local basis
         save_dir = os.path.join(self.result_folder, "basis", f'local_basis-{self.edit_t}T-pca-rank-{pca_rank}-select-mask{mask_index}')
