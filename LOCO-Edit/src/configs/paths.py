@@ -8,7 +8,7 @@ DATASET_PATHS = {
 	
 	# stable diffusion 
     # 'Examples'  	: 'datasets/examples',
-    'Examples': '/scratch/pbk5339/summer/LOCO-Edit/src/test_data_2',
+    'Examples': '/scratch/pbk5339/summer/LOCO-Edit/src/test_data',
     
 }
 

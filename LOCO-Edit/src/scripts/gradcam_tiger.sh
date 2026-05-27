@@ -24,5 +24,5 @@ python gradcam_svd.py \
     --cache_folder                      /scratch/pbk5339/caches/hf/hub \
     --sample_idx                        0 \
     --inv_steps                         50 \
-    --for_steps                         50 
-    # --mask_index                        7
+    --for_steps                         50 \
+    --mask_index                        6

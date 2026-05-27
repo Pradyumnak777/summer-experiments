@@ -135,7 +135,8 @@ if __name__ == '__main__':
     '''
     trying up block
     '''
-    target_module = edit.unet.up_blocks[3].resnets[-1]   # last ResBlock in up_blocks[3]
+    # target_module = edit.unet.up_blocks[2].resnets[-1]   # last ResBlock in up_blocks[3]
+    target_module = edit.unet.up_blocks[1].resnets[-1] #for microscope
 
     lam = edit.x_space_guidance_scale * edit.x_space_guidance_edit_step  # same step size as main.py
 

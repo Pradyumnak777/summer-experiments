@@ -101,7 +101,7 @@ if __name__ == '__main__':
     os.makedirs(out_dir, exist_ok=True)
     Image.fromarray(orig_rgb).save(os.path.join(out_dir, 'original.png'))
 
-    target_module = edit.unet.up_blocks[-1].resnets[-1]
+    target_module = edit.unet.up_blocks[1]
     lam = edit.x_space_guidance_scale * edit.x_space_guidance_edit_step
 
     for k in range(min(args.pca_rank, vT_modify.shape[0])):
