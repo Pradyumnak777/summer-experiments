@@ -73,6 +73,10 @@ def get_custom_diffusion_scheduler(args):
         )
 
     return scheduler
+
+def get_res_uncond(self):
+    """Get resolution from HuggingFace DDPM UNet config."""
+    return self.config.sample_size
     
 def get_custom_diffusion_model(args):
     '''

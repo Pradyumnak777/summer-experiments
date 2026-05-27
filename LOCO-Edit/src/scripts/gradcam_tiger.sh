@@ -4,24 +4,25 @@ python gradcam_svd.py \
     --model_name                        Manojb/stable-diffusion-2-1-base \
     --mask_model_name                   facebook/sam-vit-large \
     --dataset_name                      Examples \
-    --for_prompt                        "a tiger" \
-    --inv_prompt                        "a tiger" \
+    --for_prompt                        "an image of a tiger" \
+    --inv_prompt                        "an image of a tiger" \
     --edit_prompt                       "" \
     --neg_prompt                        "" \
-    --guidance_scale                    5.0 \
+    --guidance_scale                    7.5 \
     --guidance_scale_edit               1.0 \
-    --x_space_guidance_scale            0.35 \
+    --x_space_guidance_scale            1.0 \
     --x_space_guidance_num_step         16 \
-    --edit_t                            0.3 \
+    --edit_t                            0.7 \
     --non_semantic                      True \
     --note                              "tiger_test" \
-    --seed                              0 \
-    --null_space_projection             False \
-    --pca_rank_null                     5 \
-    --pca_rank                          5 \
+    --seed                              42 \
+    --null_space_projection             True \
+    --pca_rank_null                     10 \
+    --pca_rank                          10 \
     --tilda_v_score_type                "null+(for-null)" \
     --dtype                             fp32 \
     --cache_folder                      /scratch/pbk5339/caches/hf/hub \
     --sample_idx                        0 \
     --inv_steps                         50 \
-    --for_steps                         50
+    --for_steps                         50 
+    # --mask_index                        7

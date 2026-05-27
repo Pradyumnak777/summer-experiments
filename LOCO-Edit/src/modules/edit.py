@@ -2355,6 +2355,10 @@ class EditUncondDiffusion(object):
                 save_dir = os.path.join(self.result_folder, "basis", f'local_basis-{self.edit_t}T-select-mask-{self.args.choose_sem}')
             elif self.dataset_name in ["FFHQ", "AFHQ", "Metface", "Flower", "LSUN_church", "LSUN_bedroom"]:
                 save_dir = os.path.join(self.result_folder, "basis", f'local_basis-{self.edit_t}T-select-mask-{self.args.mask_index}')
+            elif self.dataset_name == "Random":
+                save_dir = os.path.join(self.result_folder, "basis", f'local_basis-{self.edit_t}T-select-mask-{self.args.mask_index}')
+
+            
             os.makedirs(save_dir, exist_ok=True)  
             vT_modify_path = os.path.join(save_dir, f'vT-modify-pca-rank-{pca_rank}.pt')
             vT_null_path = os.path.join(save_dir, f'vT-null-{pca_rank_null}.pt')   
@@ -2401,6 +2405,10 @@ class EditUncondDiffusion(object):
                 BASIS_NAME = f"{encoder_decoder_by_et}_{self.args.choose_sem}-edit_{self.edit_t}T_null_proj_{null_space_projection}_rank{pca_rank_null}_scale_{self.x_space_guidance_scale}"
             elif self.dataset_name in ["FFHQ", "AFHQ", "Metface", "Flower", "LSUN_church", "LSUN_bedroom"]:
                 BASIS_NAME = f"{encoder_decoder_by_et}_{self.args.mask_index}-edit_{self.edit_t}T_null_proj_{null_space_projection}_rank{pca_rank_null}_scale_{self.x_space_guidance_scale}"
+            
+            elif self.dataset_name == "Random":
+                BASIS_NAME = f"random_{self.args.mask_index}-edit_{self.edit_t}T_null_proj_{null_space_projection}_rank{pca_rank_null}_scale_{self.x_space_guidance_scale}"
+
             
             for pc_idx in range(max(vis_num_pc, vT.shape[0])):
                 self.EXP_NAME = f'{idx}-Edit_xt-noise-{BASIS_NAME}-pc_{pc_idx:0=3d}'
