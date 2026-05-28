@@ -48,7 +48,7 @@ def gradcam_for_direction(edit, zt, vk, lam, mask, target_module):
                 edit.for_prompt_emb, edit.edit_prompt_emb, edit.null_prompt_emb,
                 mask=None, mode="null+(for-null)"
             )
-            # NOTE:!! this is the "logit" equivalent:- total squared change in the masked region
+            # NOTE:!! ts is the "logit" equivalent:- total squared change in the masked region
             # caused by applying vk, which is exactly what main.py produces as lambda varies
             delta = x0_edited - x0_base
             # scalar = delta[0][mask].pow(2).sum()
@@ -61,7 +61,7 @@ def gradcam_for_direction(edit, zt, vk, lam, mask, target_module):
         feat = feat_cache['x'].detach()
         grad = grad_cache['x'].detach()
 
-        weights = grad.mean(dim=(2, 3), keepdim=True) #weighted sum to get a final single matrix feature map
+        weights = grad.mean(dim=(2, 3), keepdim=True) # weighted sum to get a final single matrix feature map
         cam = F.relu((weights * feat).sum(dim=1, keepdim=True)) #relu to remove negatives..
         cam = F.interpolate(cam.float(), size=(512, 512), mode='bilinear', align_corners=False) #interpolate to input img size..
         cam = cam[0, 0].cpu().numpy()
