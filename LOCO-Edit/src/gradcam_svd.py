@@ -33,7 +33,7 @@ def gradcam_for_direction(edit, zt, vk, lam, mask, target_module):
         zt_base = zt.detach().clone()
         zt_edit = zt_base + lam * vk.detach().view_as(zt_base)  # same operation as main.py
 
-        # baseline x0 — no gradient needed, computed outside graph
+        # baseline x0 no gradient needed, computed outside graph
         with torch.no_grad():
             x0_base = edit.get_x0(
                 zt_base, t, t_idx,
@@ -48,7 +48,7 @@ def gradcam_for_direction(edit, zt, vk, lam, mask, target_module):
                 edit.for_prompt_emb, edit.edit_prompt_emb, edit.null_prompt_emb,
                 mask=None, mode="null+(for-null)"
             )
-            # NOTE:!! this is the "logit" equivalent- total squared change in the masked region
+            # NOTE:!! this is the "logit" equivalent:- total squared change in the masked region
             # caused by applying vk, which is exactly what main.py produces as lambda varies
             delta = x0_edited - x0_base
             # scalar = delta[0][mask].pow(2).sum()
