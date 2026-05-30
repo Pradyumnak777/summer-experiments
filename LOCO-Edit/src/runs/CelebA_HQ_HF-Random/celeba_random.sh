@@ -7,7 +7,7 @@ python main.py \
     --dataset_name                      Random \
     --mask_model_name                   facebook/sam-vit-large \
     --mask_type                         SAM \
-    --mask_index                        4 \
+    --mask_index                        5 \
     --for_steps                         100 \
     --inv_steps                         100 \
     --use_yh_custom_scheduler           True \

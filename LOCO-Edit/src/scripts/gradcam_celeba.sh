@@ -7,7 +7,7 @@ python gradcam_celeba.py \
     --dataset_name                      Random \
     --mask_model_name                   facebook/sam-vit-large \
     --mask_type                         SAM \
-    --mask_index                        4 \
+    --mask_index                        5 \
     --for_steps                         100 \
     --inv_steps                         100 \
     --use_yh_custom_scheduler           True \
@@ -16,6 +16,9 @@ python gradcam_celeba.py \
     --x_space_guidance_scale            0.5 \
     --x_space_guidance_num_step         16 \
     --edit_t                            0.6 \
+    --run_edit_null_space_projection    True \
+    --null_space_projection             True \
     --pca_rank                          5 \
+    --pca_rank_null                     5 \
     --note                              "face_test" \
     --cache_folder                      /scratch/pbk5339/caches/hf/hub

@@ -1025,6 +1025,8 @@ class EditStableDiffusion(object):
         )
         assert t_idx == self.edit_t_idx
 
+        torch.save(zt.detach().cpu(), os.path.join(self.result_folder, "xt.pt"))
+
                         
         # '''
         # BELOW IS ORIGINAL!

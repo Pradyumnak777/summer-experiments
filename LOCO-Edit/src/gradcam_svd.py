@@ -128,7 +128,7 @@ if __name__ == '__main__':
     os.makedirs(out_dir, exist_ok=True)
     Image.fromarray(orig_rgb).save(os.path.join(out_dir, 'original.png'))
 
-    # choose which U-Net submodule to hook
+    # choosing.. which U-Net submodule to hook
     # mid_block is the bottleneck (8x8 spatial in SD), cheapest. Try up_blocks[1] (16x16) or up_blocks[2] (32x32) for finer maps.
     # target_module = edit.unet.mid_block
     
@@ -147,7 +147,7 @@ if __name__ == '__main__':
         print(f'direction {k}: score={score:.4f}, cam max-region size={(cam>0.5).sum()}')
 
         save_overlay(orig_rgb, cam, os.path.join(out_dir, f'gradcam_dir{k:02d}.png'))
-        Image.fromarray((cam*255).astype(np.uint8)).save(
+        Image.fromarray((cam*255).astype(np.uint8)).save( # ts is the raw one..grayscale.
             os.path.join(out_dir, f'gradcam_dir{k:02d}_raw.png'))
 
     print(f'Done. Heatmaps in {out_dir}')
