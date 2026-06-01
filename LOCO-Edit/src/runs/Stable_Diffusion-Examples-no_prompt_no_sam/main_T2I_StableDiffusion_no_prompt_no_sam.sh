@@ -10,16 +10,16 @@ python main.py \
     --neg_prompt                            ""                                           \
     --x_space_guidance_scale                0.35                                         \
     --x_space_guidance_num_step             16                                           \
-    --edit_t                                0.05                                          \
+    --edit_t                                0.5                                          \
     --run_edit_null_space_projection_zt     True                                         \
     --non_semantic                          True                                         \
     --note                                  "no_prompt_no_sam"                           \
-    --guidance_scale                        1.0                                          \
+    --guidance_scale                        1.5                                          \
     --guidance_scale_edit                   1.0                                          \
     --seed                                  0                                            \
     --null_space_projection                 False                                        \
     --pca_rank_null                         5                                            \
-    --pca_rank                              10                                            \
+    --pca_rank                              5                                            \
     --sampling_mode                         False                                        \
     --tilda_v_score_type                    "null+(for-null)"                            \
     --dtype                                 fp32                                         \
@@ -27,6 +27,6 @@ python main.py \
     --vis_num                               2                                            \
     --use_sega                              False                                        \
     --sample_idx                            0                                            \
-    --inv_steps                             100                                          \
-    --for_steps                             100                                         \
-        --mask_path   masks/mask_green.pt \
+    --inv_steps                             50                                          \
+    --for_steps                             50                                         \
+    --mask_path   masks/mask_green.pt 
