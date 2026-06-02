@@ -1,4 +1,4 @@
-python gradcam_celeba.py \
+python gradcam_celeba_new.py \
     --sh_file_name                      celeba_random.sh \
     --device                            cuda:0 \
     --dtype                             fp32 \
