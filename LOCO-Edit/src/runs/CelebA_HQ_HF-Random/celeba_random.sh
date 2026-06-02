@@ -7,7 +7,7 @@ python main.py \
     --dataset_name                      Random \
     --mask_model_name                   facebook/sam-vit-large \
     --mask_type                         SAM \
-    --mask_index                        5 \
+    --mask_index                        4 \
     --for_steps                         100 \
     --inv_steps                         100 \
     --use_yh_custom_scheduler           True \
@@ -17,7 +17,7 @@ python main.py \
     --x_space_guidance_num_step         16 \
     --edit_t                            0.6 \
     --run_edit_null_space_projection    True \
-    --null_space_projection             True \
+    --null_space_projection             False \
     --pca_rank_null                     5 \
     --pca_rank                          5 \
     --vis_num                           2 \

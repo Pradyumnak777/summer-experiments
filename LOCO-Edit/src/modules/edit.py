@@ -2364,6 +2364,9 @@ class EditUncondDiffusion(object):
         xt, t, t_idx = self.DDIMforwardsteps(xT, t_start_idx=0, t_end_idx=self.edit_t_idx)
 
         assert t_idx == self.edit_t_idx
+        
+        #saves the latent x_t
+        torch.save(xt.detach().cpu(), os.path.join(self.result_folder, f'xt-edit_{self.edit_t}T.pt'))
 
         if not os.path.exists(self.vT_path):
             print('!!!CALCULATING VT!!!')

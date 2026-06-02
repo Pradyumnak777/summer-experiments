@@ -83,21 +83,20 @@ if __name__ == '__main__':
     edit = EditUncondDiffusion(args) #loads diff model (initialization)
     edit.scheduler.set_timesteps(edit.for_steps, device=edit.device)
 
-    # Random dataset: no inversion, just draw xT (xT is gaussian noise(?))
-    xT = torch.randn(1, 3, edit.image_size, edit.image_size,
-                     dtype=edit.dtype, device=edit.device)
-    torch.manual_seed(args.seed)  # same seed as main run
-    xT = torch.randn(1, 3, edit.image_size, edit.image_size,
-                     dtype=edit.dtype, device=edit.device)
+    #load the exact xt saved by main.py (no renoising or repeating)
+    xt_path = os.path.join(edit.result_folder, f'xt-edit_{edit.edit_t}T.pt')
+    assert os.path.exists(xt_path), f'missing {xt_path} — run main.py first'
+    xt = torch.load(xt_path, map_location=edit.device).type(edit.dtype)
+    xt = xt.to(edit.device)
 
-    '''
-    #NOTE: here, edit_t_idx is what I set in the bash file argument for 
-    WHERE the edit needs to happen.
+    # ''' (old below)
+    # #NOTE: here, edit_t_idx is what I set in the bash file argument for 
+    # WHERE the edit needs to happen.
     
-    below line runs from noise(x_T) to the edit timestep defined in above line
-    '''
-    xt, t, t_idx = edit.DDIMforwardsteps(xT, t_start_idx=0, t_end_idx=edit.edit_t_idx)
-    xt = xt.to(edit.device) #noisy image/latent at the edit timestep
+    # below line runs from noise(x_T) to the edit timestep defined in above line
+    # '''
+    # xt, t, t_idx = edit.DDIMforwardsteps(xT, t_start_idx=0, t_end_idx=edit.edit_t_idx)
+    # xt = xt.to(edit.device) #noisy image/latent at the edit timestep
 
     # load basis saved by main.py
     basis_dir = os.path.join(

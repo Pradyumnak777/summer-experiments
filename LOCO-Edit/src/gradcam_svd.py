@@ -86,20 +86,14 @@ if __name__ == '__main__':
 
     edit = EditStableDiffusion(args)
 
-    # re-derive zt at edit_t (same path as main.py)
+    #gradcam_for_direction reads edit.scheduler.timesteps[t_idx]. sp it needs to be initialized
     edit.scheduler.set_timesteps(edit.for_steps)
-    if edit.dataset_name == 'Random':
-        zT = torch.randn(1, 4, 64, 64, dtype=edit.dtype, device=edit.device)
-    else:
-        zT = edit.run_DDIMinversion(idx=edit.sample_idx)
 
-    zt, t, t_idx = edit.DDIMforwardsteps(
-        zT, t_start_idx=0, t_end_idx=edit.edit_t_idx,
-        for_prompt_emb=edit.for_prompt_emb,
-        edit_prompt_emb=edit.edit_prompt_emb,
-        null_prompt_emb=edit.null_prompt_emb,
-        mode="null+(for-null)",
-    )
+    # load the exact zt saved by main.py (no re-inversion, no re-denoising)
+    zt_path = os.path.join(edit.result_folder, "xt.pt")
+    assert os.path.exists(zt_path), f'missing {zt_path} — run main.py first'
+    zt = torch.load(zt_path, map_location=edit.device).type(edit.dtype)
+    zt = zt.to(edit.device)
 
     # load saved SVD basis (same folder structure as the main run)
     basis_dir = os.path.join(
