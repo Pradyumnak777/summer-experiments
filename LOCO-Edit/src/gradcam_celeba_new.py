@@ -17,10 +17,85 @@ if os.getenv("DEBUGPY", "0") == "1":
 
 
 # how many denoising steps to skip between saved maps.
-# for_steps is asserted to 100 for this model, so the tail is <=100 steps.
+# for_steps is asserted to 100 for this model, so the tail(ts edit_t to x_0) is <100 steps.
 # set to 1 to keep every timestep, 5 to keep every 5th, etc.
 TIMESTEP_STRIDE = 1
 
+def gradcam_over_trajectory_pixel(edit, xt, vk, lam, act_layer, stride=1):
+    feat_cache, grad_cache = {}, {}
+
+    def act_fwd_hook(m, i, o): #runs during forward pass
+        feat_cache['x'] = o[0] if isinstance(o, tuple) else o #stores activation (a decoder/up layer now)
+
+    def act_bwd_hook(m, gi, go): #runs during backprop..
+        grad_cache['x'] = go[0] #stores the gradient coming back..
+
+    h1 = act_layer.register_forward_hook(act_fwd_hook)
+    h2 = act_layer.register_full_backward_hook(act_bwd_hook)
+
+    results = []
+    try:
+        timesteps = edit.scheduler.timesteps
+        start = int(edit.edit_t_idx) #WHERE the edit happens (set via edit_t in the bash file)
+
+        xt_base = xt.detach().clone()
+        # inject vk ONCE at the edit timestep. from here on we just denoise both trajectories.
+        xt_edit = xt_base + lam * vk.detach().view_as(xt_base)
+
+        #edit_t -> x_0. at each step to collect x0 and do one gradCAM.
+        for i in range(start, len(timesteps)):
+            t = timesteps[i].to(edit.device)
+
+            #predicted clean image x0 of the NON-edited path. constant target, no grad.
+            with torch.no_grad():
+                x0_base = edit.get_x0(t, xt_base)
+            x0_base = x0_base.detach()
+
+            #predicted clean image x0 of the EDITED path. needs grad so it flows back to up_blocks.
+            edit.unet.zero_grad(set_to_none=True)
+            with torch.enable_grad():
+                x0_edit = edit.get_x0(t, xt_edit) #full forward thru decoder -> Tweedie x0
+                feat = feat_cache['x'] #activation of a decoder (up) layer
+
+                # delta x0 = x0(edited) - x0(base). a pixel-space IMAGE diff, NOT a scalar!
+                delta = x0_edit - x0_base
+                '''
+                #NOTE!: pow(2).sum() collapses delta into ONE number.
+                # THAT is the value we backpropogate (the "logit"). same as the old pixel method.
+                '''
+                scalar = delta.pow(2).sum()
+                scalar.backward() #this calls the bwd hook!!!
+
+            score_val = float(scalar.detach().cpu())
+
+            feat = feat.detach() #has outputs of forward activations
+            grad = grad_cache['x'].detach() #has gradients of d(scalar)/d(activation map)
+            weights = grad.mean(dim=(2, 3), keepdim=True) #GAP over spatial -> per-channel weight
+            cam = F.relu((weights * feat).sum(dim=1, keepdim=True)) #CAM formula
+            cam = F.interpolate(cam.float(), size=(256, 256), mode='bilinear', align_corners=False) #upsample
+            cam = cam[0, 0].cpu().numpy() #2d plot now
+            if cam.max() > 1e-8:
+                cam = cam / cam.max()
+
+            if (i - start) % stride == 0:
+                results.append((i, int(t.item()), cam, score_val))
+
+            #go 1 DDIM step forward, for both base and edit.. (need et -> get_et, no grad)
+            with torch.no_grad():
+                et_base = edit.get_et(t, xt_base)
+                xt_base = edit.scheduler.step(
+                    et_base, t, xt_base, eta=0, use_clipped_model_output=None, generator=None
+                ).prev_sample.detach()
+                et_edit = edit.get_et(t, xt_edit)
+                xt_edit = edit.scheduler.step(
+                    et_edit, t, xt_edit, eta=0, use_clipped_model_output=None, generator=None
+                ).prev_sample.detach()
+
+        return results
+
+    finally:
+        h1.remove()
+        h2.remove()
 
 def gradcam_over_trajectory(edit, xt, vk, lam, act_layer, hspace_layer, stride=1):
     feat_cache, grad_cache, h_cache = {}, {}, {}
@@ -52,16 +127,18 @@ def gradcam_over_trajectory(edit, xt, vk, lam, act_layer, hspace_layer, stride=1
         # inject vk ONCE at the edit timestep. from here on we just denoise both trajectories.
         xt_edit = xt_base + lam * vk.detach().view_as(xt_base)
 
-        # walk the tail: edit_t -> x_0. at each step we collect h-space and do one gradCAM.
+        #edit_t -> x_0. at each step to collect h-space and do one gradCAM.
         for i in range(start, len(timesteps)):
             t = timesteps[i].to(edit.device)
 
-            # ---- base h-space: no grad, it's just a frozen target ----
+            #below is h-space of non edited at timestep t. It is treated a constsnt.
+            #NOT output of the neural net..
             with torch.no_grad():
                 et_base = _unet_et(xt_base, t)
             h_base = h_cache['x'].detach()
 
-            # ---- edited h-space: needs grad so gradCAM can flow back ----
+            #below is hspace of x_t + v_k, part of the NN output
+            #this will flow back, 
             edit.unet.zero_grad(set_to_none=True)
             with torch.enable_grad():
                 et_edit = _unet_et(xt_edit, t) #this fires both hooks (h-space + activation layer)
@@ -91,7 +168,7 @@ def gradcam_over_trajectory(edit, xt, vk, lam, act_layer, hspace_layer, stride=1
             if (i - start) % stride == 0:
                 results.append((i, int(t.item()), cam, score_val))
 
-            # ---- advance BOTH trajectories one DDIM step (plain denoising, edit NOT re-applied) ----
+            #go 1 DDIM step forward, for both base and edit..
             with torch.no_grad():
                 xt_base = edit.scheduler.step(
                     et_base, t, xt_base, eta=0, use_clipped_model_output=None, generator=None
@@ -144,15 +221,32 @@ if __name__ == '__main__':
     assert os.path.exists(orig_path), 'original.png not found — run main.py first'
     orig_rgb = np.array(Image.open(orig_path).convert('RGB').resize((256, 256)))
 
-    out_dir = os.path.join(edit.result_folder, 'gradcam_hspace')
-    os.makedirs(out_dir, exist_ok=True)
-    Image.fromarray(orig_rgb).save(os.path.join(out_dir, 'original.png'))
+    
+    
 
     # h-space = the bottleneck (mid_block). the layer JUST BEFORE it = last encoder block.
     # (same idea as the VAE paper using the last layer of the encoder)
-    hspace_layer = edit.unet.mid_block
-    act_layer = edit.unet.down_blocks[-1]
-
+    
+    '''
+    uncomment below if using h-space vector derived scalar
+    '''
+    # hspace_layer = edit.unet.mid_block
+    # # act_layer = edit.unet.down_blocks[-1]
+    # act_layer = edit.unet.down_blocks[0]
+    # out_dir = os.path.join(edit.result_folder, 'gradcam_hspace')
+    
+    '''
+    uncomment below if performing pixel space level derived scalar
+    '''
+    act_layer = edit.unet.up_blocks[1]         
+    out_dir = os.path.join(edit.result_folder, 'gradcam_pixel') 
+    
+    '''
+    resume normal execution..
+    '''
+    os.makedirs(out_dir, exist_ok=True)
+    Image.fromarray(orig_rgb).save(os.path.join(out_dir, 'original.png'))
+    
     lam = edit.x_space_guidance_scale * edit.x_space_guidance_edit_step
 
     for k in range(min(args.pca_rank, vT_modify.shape[0])):
@@ -162,7 +256,12 @@ if __name__ == '__main__':
         dir_out = os.path.join(out_dir, f'dir{k:02d}')
         os.makedirs(dir_out, exist_ok=True)
 
-        results = gradcam_over_trajectory(edit, xt, vk, lam, act_layer, hspace_layer, stride=TIMESTEP_STRIDE)
+        '''
+        uncomment the one below accordingly(pixel or h-space)
+        '''
+        # results = gradcam_over_trajectory(edit, xt, vk, lam, act_layer, hspace_layer, stride=TIMESTEP_STRIDE)
+        results = gradcam_over_trajectory_pixel(edit, xt, vk, lam, act_layer, stride=TIMESTEP_STRIDE)
+
         print(f'direction {k}: collected {len(results)} timestep maps')
 
         for (i, t_val, cam, score) in results:

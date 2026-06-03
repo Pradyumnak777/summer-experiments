@@ -2,8 +2,8 @@
 # train_lora.sh
 
 export MODEL_NAME="Manojb/stable-diffusion-2-1-base"
-export DATA_DIR="data/microscopy_lora"
-export OUT_DIR="checkpoints_2/sd21_microscopy_lora"
+export DATA_DIR="data/microscopy_lora_new"
+export OUT_DIR="checkpoints_new/sd21_microscopy_lora"
 export TRAIN_SCRIPT="/scratch/pbk5339/summer/diffusers_repo/examples/text_to_image/train_text_to_image_lora.py"
 export HF_HOME="/scratch/pbk5339/caches/hf"
 export CUDA_VISIBLE_DEVICES=0
