@@ -6,7 +6,6 @@ from PIL import Image
 def make_color_mask(img_path, kind, out_path, size=512):
     img = Image.open(img_path).convert('RGB')
 
-    # match ImgDataset.__getitem__ exactly
     w, h = img.size
     crop_size = min(w, h)
     left   = (w - crop_size) / 2
@@ -20,11 +19,15 @@ def make_color_mask(img_path, kind, out_path, size=512):
 
     R, G, B = a[..., 0], a[..., 1], a[..., 2]
 
+    '''
+    using some kind of heuristics to gauge the color..
+    '''
+    
     if kind == 'green':
-        # bright green, not very red, not very blue
+        #bright green, not very red, not very blue
         m = (G > 80) & (G - R > 25) & (G - B > 25)
     elif kind == 'magenta':
-        # high R AND B, lower G  (magenta = R + B)
+        #high R AND B, lower G  (magenta = R + B)
         m = (R > 80) & (B > 80) & (R - G > 15) & (B - G > 15)
     elif kind == 'both':
         green   = (G > 80) & (G - R > 25) & (G - B > 25)

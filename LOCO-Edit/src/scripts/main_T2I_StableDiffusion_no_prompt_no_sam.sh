@@ -4,9 +4,9 @@ python main.py \
     --model_name                            Manojb/stable-diffusion-2-1-base        \
     --mask_model_name                       facebook/sam-vit-large                       \
     --dataset_name                          Examples                                     \
-    --for_prompt                            "fluorescence microscopy, bright green and pink cells"                                           \
+    --for_prompt                            "an image of cells in fluroscent microscopy"                                           \
     --edit_prompt                           ""                                           \
-    --inv_prompt                            "fluorescence microscopy, bright green and magenta cells"                                           \
+    --inv_prompt                            "an image of cells in fluroscent microscopy"                                           \
     --neg_prompt                            ""                                           \
     --x_space_guidance_scale                0.35                                         \
     --x_space_guidance_num_step             16                                           \
@@ -29,4 +29,4 @@ python main.py \
     --sample_idx                            0                                            \
     --inv_steps                             50                                          \
     --for_steps                             50                                         \
-    --mask_path   masks/mask_magenta.pt 
+    --mask_path   masks/mask_green.pt 

@@ -12,7 +12,7 @@ python main.py \
     --inv_prompt            "an image of cells in fluroscent microscopy"    \
     --neg_prompt            ""                                              \
     --lora_path             checkpoints_new/sd21_microscopy_lora              \
-    --mask_path             masks/mask_magenta.pt                             \
+    --mask_path             masks/mask_green.pt                             \
     --x_space_guidance_scale        0.35                                    \
     --x_space_guidance_num_step     16                                      \
     --edit_t                        0.5                                     \
