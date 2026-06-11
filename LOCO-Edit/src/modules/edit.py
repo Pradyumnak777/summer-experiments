@@ -1155,6 +1155,9 @@ class EditStableDiffusion(object):
         # get latent code (zT -> zt)
         if self.dataset_name == 'Random':
             zT = torch.randn(1, 4, 64, 64, dtype=self.dtype, device=self.device)
+        else:
+            zT = self.run_DDIMinversion(idx=self.sample_idx)
+
         
         self.EXP_NAME = "original"
         if (not os.path.exists(os.path.join(self.result_folder, "original.png"))) or (not os.path.exists(os.path.join(self.result_folder, "mask/mask.pt"))):
@@ -1180,6 +1183,11 @@ class EditStableDiffusion(object):
                                             null_prompt_emb=self.null_prompt_emb,
                                             mode="null+(for-null)")
         assert t_idx == self.edit_t_idx
+        
+        #new stuff for gradcam of semantic(tiger).
+        #basically saving xt.pt..
+        assert t_idx == self.edit_t_idx
+        torch.save(zt.detach().cpu(), os.path.join(self.result_folder, "xt.pt"))
 
 
 

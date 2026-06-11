@@ -145,11 +145,11 @@ def gradcam_over_trajectory(edit, xt, vk, lam, act_layer, hspace_layer, stride=1
                 h_edit = h_cache['x']
                 feat = feat_cache['x'] #activation of the layer just before h-space
 
-                # delta h = h(edited) - h(base). NOTE: this is a FEATURE MAP, not a scalar!
+                #delta h = h(edited) - h(base). NOTE: this is a FEATURE MAP, not a scalar!
                 delta_h = h_edit - h_base
                 '''
                 #NOTE!: pow(2).sum() collapses delta_h into ONE number.
-                # THAT is the value we backpropogate (similar to logit in original gradCAM)
+                #THAT is the value we backpropogate (similar to logit in original gradCAM)
                 '''
                 scalar = delta_h.pow(2).sum()
                 scalar.backward() #this calls the bwd hook!!!

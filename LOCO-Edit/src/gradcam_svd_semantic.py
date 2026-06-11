@@ -255,7 +255,7 @@ if __name__ == '__main__':
     # load basis saved by main.py (SD folder naming differs from CelebA)
     basis_dir = os.path.join(
         edit.result_folder, 'basis',
-        f'local_basis-{edit.edit_t}T-pca-rank-{args.pca_rank}-select-mask{args.mask_index}',
+        f'local_basis-{edit.edit_t}T-"{edit.edit_prompt}"-pca-rank-{args.pca_rank}-select-mask{args.mask_index}',
     )
     vT_path = os.path.join(basis_dir, 'vT-modify.pt')
 
@@ -275,17 +275,17 @@ if __name__ == '__main__':
     '''
     uncomment below if using h-space vector derived scalar
     '''
-    # hspace_layer = edit.unet.mid_block
-    # act_layer = edit.unet.down_blocks[-1]
-    # # act_layer = edit.unet.down_blocks[0]
-    # out_dir = os.path.join(edit.result_folder, 'gradcam_hspace')
+    hspace_layer = edit.unet.mid_block
+    act_layer = edit.unet.down_blocks[-1]
+    # act_layer = edit.unet.down_blocks[0]
+    out_dir = os.path.join(edit.result_folder, 'gradcam_hspace')
 
     '''
     uncomment below if performing pixel space level derived scalar
     (this is the MATCHED scalar for SD: the basis comes from the x0 pullback)
     '''
-    act_layer = edit.unet.up_blocks[1]
-    out_dir = os.path.join(edit.result_folder, 'gradcam_pixel')
+    # act_layer = edit.unet.up_blocks[1]
+    # out_dir = os.path.join(edit.result_folder, 'gradcam_pixel')
 
     '''
     resume normal execution..
@@ -314,8 +314,8 @@ if __name__ == '__main__':
         '''
         uncomment the one below accordingly (pixel or h-space)
         '''
-        # results = gradcam_over_trajectory(edit, zt, vk, lam, act_layer, hspace_layer, stride=TIMESTEP_STRIDE)
-        results = gradcam_over_trajectory_pixel(edit, zt, vk, lam, act_layer, stride=TIMESTEP_STRIDE)
+        results = gradcam_over_trajectory(edit, zt, vk, lam, act_layer, hspace_layer, stride=TIMESTEP_STRIDE)
+        # results = gradcam_over_trajectory_pixel(edit, zt, vk, lam, act_layer, stride=TIMESTEP_STRIDE)
 
         print(f'direction {k}: collected {len(results)} timestep maps')
 

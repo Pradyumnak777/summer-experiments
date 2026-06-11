@@ -488,6 +488,15 @@ def get_dataset(args):
             image_size = 512, # Stable-Diffusion
             dataset_name = 'Examples',
         )
+        
+    elif args.dataset_name == 'Examples_2':
+        dataset = ImgDataset(
+            image_root = DATASET_PATHS['Examples_2'],
+            device = args.device,
+            dtype = args.dtype,
+            image_size = 512, # Stable-Diffusion
+            dataset_name = 'Examples_2',
+        )
     elif args.dataset_name == 'CelebA_HQ':
         dataset = ImgDataset(
             image_root = DATASET_PATHS['CelebA_HQ'], 
