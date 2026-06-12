@@ -4,7 +4,7 @@ python main.py \
     --model_name                            Manojb/stable-diffusion-2-1-base                      \
     --mask_model_name                       facebook/sam-vit-large                      \
     --dataset_name                          Examples_2                                      \
-    --edit_prompt                           "a tiger with fangs"                  \
+    --edit_prompt                           "a black tiger"                  \
     --for_prompt                            "a tiger"                          \
     --neg_prompt                            ""                                          \
     --x_space_guidance_scale                2                                         \
