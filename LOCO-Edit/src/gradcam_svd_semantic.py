@@ -126,6 +126,7 @@ def gradcam_over_trajectory_pixel(edit, zt, vk, lam, act_layer, stride=1):
         h2.remove()
 
 
+
 def gradcam_over_trajectory(edit, zt, vk, lam, act_layer, hspace_layer, stride=1):
     feat_cache, grad_cache, h_cache = {}, {}, {}
 
@@ -271,7 +272,7 @@ if __name__ == '__main__':
 
     # h-space = the bottleneck (mid_block). the layer JUST BEFORE it = last encoder block.
     # (same idea as the VAE paper using the last layer of the encoder)
-
+    
     '''
     uncomment below if using h-space vector derived scalar
     '''
@@ -286,6 +287,28 @@ if __name__ == '__main__':
     '''
     # act_layer = edit.unet.up_blocks[1]
     # out_dir = os.path.join(edit.result_folder, 'gradcam_pixel')
+
+    # ===================== NEW: layer-sweep setup =====================
+    # pick which scalar variant the sweep runs with: 'hspace' or 'pixel'.
+    # (your uncomment-toggle above is kept as reference; this flag drives execution
+    #  and sets out_dir accordingly.)
+    VARIANT = 'hspace'
+    if VARIANT == 'pixel':
+        out_dir = os.path.join(edit.result_folder, 'gradcam_pixel')
+
+    # build the U-Net layers to sweep over (DF-CAM style: across the whole net).
+    # the h-space scalar lives at mid_block, so only layers UPSTREAM of it
+    # (encoder down_blocks + mid_block) get gradient; up_blocks are downstream of
+    # the bottleneck -> zero gradient, so we add them ONLY for the pixel variant
+    # (whose scalar is the decoded output, downstream of everything).
+    sweep_layers = []
+    for bi, blk in enumerate(edit.unet.down_blocks):
+        sweep_layers.append((f'down_blocks_{bi}', blk))
+    sweep_layers.append(('mid_block', edit.unet.mid_block))
+    if VARIANT == 'pixel':
+        for bi, blk in enumerate(edit.unet.up_blocks):
+            sweep_layers.append((f'up_blocks_{bi}', blk))
+    # ==================================================================
 
     '''
     resume normal execution..
@@ -304,25 +327,35 @@ if __name__ == '__main__':
     # vis_stride = (edit.x_space_guidance_num_step + 1) // args.vis_num
     # lam = edit.x_space_guidance_scale * edit.x_space_guidance_edit_step * vis_stride
 
-    for k in range(min(args.pca_rank, vT_modify.shape[0])):
-        vk = vT_modify[k] / (vT_modify[k].norm() + 1e-8) #kth direction vector..(normalizing)
+    # NEW: outer loop sweeps the hooked layer; each layer gets its own subfolder,
+    # and the per-direction (dir{k}) folders live inside it, as before.
+    for layer_name, act_layer in sweep_layers:
+        layer_out = os.path.join(out_dir, layer_name)
+        os.makedirs(layer_out, exist_ok=True)
+        Image.fromarray(orig_rgb).save(os.path.join(layer_out, 'original.png'))
+        print(f'===== sweeping act_layer = {layer_name} =====')
 
-        # one folder per direction, then one map per timestep inside it
-        dir_out = os.path.join(out_dir, f'dir{k:02d}')
-        os.makedirs(dir_out, exist_ok=True)
+        for k in range(min(args.pca_rank, vT_modify.shape[0])):
+            vk = vT_modify[k] / (vT_modify[k].norm() + 1e-8) #kth direction vector..(normalizing)
 
-        '''
-        uncomment the one below accordingly (pixel or h-space)
-        '''
-        results = gradcam_over_trajectory(edit, zt, vk, lam, act_layer, hspace_layer, stride=TIMESTEP_STRIDE)
-        # results = gradcam_over_trajectory_pixel(edit, zt, vk, lam, act_layer, stride=TIMESTEP_STRIDE)
+            # one folder per direction, then one map per timestep inside it
+            dir_out = os.path.join(layer_out, f'dir{k:02d}')
+            os.makedirs(dir_out, exist_ok=True)
 
-        print(f'direction {k}: collected {len(results)} timestep maps')
+            '''
+            uncomment the one below accordingly (pixel or h-space)
+            '''
+            if VARIANT == 'hspace':
+                results = gradcam_over_trajectory(edit, zt, vk, lam, act_layer, hspace_layer, stride=TIMESTEP_STRIDE)
+            else:
+                results = gradcam_over_trajectory_pixel(edit, zt, vk, lam, act_layer, stride=TIMESTEP_STRIDE)
 
-        for (i, t_val, cam, score) in results:
-            print(f'  dir{k:02d} step{i:03d} (t={t_val}): score={score:.4f}, cam>0.5 area={(cam>0.5).sum()}')
-            save_overlay(orig_rgb, cam, os.path.join(dir_out, f'step{i:03d}_t{t_val:04d}.png'))
-            Image.fromarray((cam*255).astype(np.uint8)).save(
-                os.path.join(dir_out, f'step{i:03d}_t{t_val:04d}_raw.png'))
+            print(f'[{layer_name}] direction {k}: collected {len(results)} timestep maps')
+
+            for (i, t_val, cam, score) in results:
+                print(f'  dir{k:02d} step{i:03d} (t={t_val}): score={score:.4f}, cam>0.5 area={(cam>0.5).sum()}')
+                save_overlay(orig_rgb, cam, os.path.join(dir_out, f'step{i:03d}_t{t_val:04d}.png'))
+                Image.fromarray((cam*255).astype(np.uint8)).save(
+                    os.path.join(dir_out, f'step{i:03d}_t{t_val:04d}_raw.png'))
 
     print(f'Done. Heatmaps in {out_dir}')
