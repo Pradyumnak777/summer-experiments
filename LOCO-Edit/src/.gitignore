@@ -6,3 +6,7 @@ checkpoints_2/
 data/
 checkpoints_new/
 runs/
+bleach_corrected_DPHM_Sox2_MCP_halo549_snap646-02_MIP_merged (1)_split_channels/*
+!bleach_corrected_DPHM_Sox2_MCP_halo549_snap646-02_MIP_merged (1)_split_channels/split_tiff_channels.py
+
+OneDrive_1_6-17-2026/

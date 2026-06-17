@@ -1,29 +1,25 @@
-#!/bin/bash
-# main_microscopy_lora.sh
-
-python main.py \
-    --sh_file_name          main_microscopy_lora.sh                         \
+python chanel_mix.py \
+    --sh_file_name          chanel.sh                             \
     --device                cuda:0                                          \
     --model_name            Manojb/stable-diffusion-2-1-base                \
+     --note                          "microscopy_lora_sd21"                  \
     --dataset_name          Examples                                        \
     --sample_idx            0                                               \
     --for_prompt            "an image of cells in fluroscent microscopy"    \
     --edit_prompt           ""                                              \
     --inv_prompt            "an image of cells in fluroscent microscopy"    \
     --neg_prompt            ""                                              \
-    --lora_path             checkpoints_new/sd21_microscopy_lora              \
-    --mask_path             ""                             \
+    --lora_path             checkpoints_new/sd21_microscopy_lora            \
+    --mask_path             ""                                              \
     --x_space_guidance_scale        0.35                                    \
     --x_space_guidance_num_step     16                                      \
     --edit_t                        0.5                                     \
     --run_edit_null_space_projection_zt     True                            \
     --non_semantic                  True                                    \
-    --note                          "microscopy_lora_sd21"                  \
     --guidance_scale                1.5                                     \
     --guidance_scale_edit           1.0                                     \
     --seed                          42                                      \
-    --null_space_projection         False                                    \
-    --pca_rank_null                 5                                       \
+    --null_space_projection         False                                   \
     --pca_rank                      5                                       \
     --sampling_mode                 False                                   \
     --tilda_v_score_type            "null+(for-null)"                       \
