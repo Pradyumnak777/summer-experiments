@@ -1,34 +1,82 @@
 # prepare_data_2ch.py
 import os, json
 from pathlib import Path
-import cv2
 import numpy as np
+import tifffile as tiff
 from PIL import Image
 
-VIDEO_DIR = Path(__file__).resolve().parent  # videos are in the src folder
-VIDEOS = [
-    "bleach_corrected_DPHM_Sox2_MCP_halo549_snap646-01_MIP_merged (1)-1.avi",
-    "bleach_corrected_DPHM_Sox2_MCP_halo549_snap646-02_MIP_merged_h264-1.mp4",
-    "bleach_corrected_DPHM_Sox2_MCP_halo549_snap646-03_MIP_merged_h264-1.mp4",
+SRC_DIR = Path(__file__).resolve().parent
+TIFFS = [
+    "OneDrive_1_6-17-2026/bleach_corrected_DPHM_Sox2_MCP_halo549_snap646-01_MIP_merged.tif",
+    "OneDrive_1_6-17-2026/bleach_corrected_DPHM_Sox2_MCP_halo549_snap646-02_MIP_merged.tif",
+    "OneDrive_1_6-17-2026/bleach_corrected_DPHM_Sox2_MCP_halo549_snap646-03_MIP_merged.tif",
 ]
-OUT_DIR = Path("data/microscopy_lora_2ch")
-PREVIEW_DIR = Path("data/microscopy_lora_2ch_previews")  # green/magenta merged PNGs for visual inspection only
-CAPTION = "an image of cells in fluroscent microscopy"
-TILE = 512  # square crop size
-SAVE_PREVIEWS = True  # set False to skip preview generation (saves time/disk)
+
+OUT_DIR_A    = Path("data/microscopy_lora_chA")           # chA training images + metadata
+OUT_DIR_B    = Path("data/microscopy_lora_chB")           # chB training images + metadata
+PREVIEW_DIR  = Path("data/microscopy_lora_previews")      # green/magenta composites, inspection only
+
+CAPTION_A = "an image of cells in fluorescent microscopy, Sox2 halo549 channel"
+CAPTION_B = "an image of cells in fluorescent microscopy, MCP snap646 channel"
+TILE = 512
+
+SAVE_PREVIEWS = True
+LOWER_PCT = 0.35    # matches ImageJ default auto-contrast saturation
+UPPER_PCT = 99.65
+
+CH_A_INDEX = 0   # Sox2 / halo549 (green LUT) — flip to 1 if previews look swapped vs ImageJ
+CH_B_INDEX = 1   # MCP  / snap646 (magenta LUT)
+
+
+def first_existing_axis(axes, candidates):
+    for candidate in candidates:
+        if candidate in axes:
+            return candidate
+    return None
+
+
+def move_to_tcyx(data, axes):
+    if "C" not in axes:
+        raise ValueError(f"No channel axis found in TIFF axes {axes!r}")
+    y_axis = first_existing_axis(axes, "Y")
+    x_axis = first_existing_axis(axes, "X")
+    if y_axis is None or x_axis is None:
+        raise ValueError(f"No Y/X spatial axes found in TIFF axes {axes!r}")
+
+    keep = ["T"] if "T" in axes else []
+    keep += ["C", y_axis, x_axis]
+
+    slicer, reduced = [], []
+    for axis, size in zip(axes, data.shape):
+        if axis in keep:
+            slicer.append(slice(None)); reduced.append(axis)
+        elif size == 1:
+            slicer.append(0)
+        else:
+            raise ValueError(f"Unsupported non-singleton axis {axis!r} size {size}")
+    data = data[tuple(slicer)]
+    axes = "".join(reduced)
+
+    if "T" not in axes:
+        data = np.expand_dims(data, 0); axes = "T" + axes
+    order = [axes.index(a) for a in "TCYX"]
+    return np.moveaxis(data, order, range(4)), "TCYX"
+
+
+def channel_to_uint8(channel_stack):
+    # stretch once across the whole stack so frames stay comparable (data is bleach-corrected)
+    lo = np.percentile(channel_stack, LOWER_PCT)
+    hi = np.percentile(channel_stack, UPPER_PCT)
+    if hi <= lo:
+        lo, hi = float(channel_stack.min()), float(channel_stack.max())
+    scaled = (channel_stack.astype(np.float32) - lo) / max(hi - lo, 1e-6)
+    return (np.clip(scaled, 0, 1) * 255).astype(np.uint8)
 
 
 def tile_frame(frame, size=TILE):
-    # cut a frame into non-overlapping size x size tiles. centered grid, leftover edges dropped.
     h, w = frame.shape[:2]
-    ny, nx = h // size, w // size       # how many full tiles fit on each axis (708x2048 -> 1 x 4)
-
-    '''
-    below is for margins..
-    off_y is nothing, as 2048 is divisible by 512. no margin
-    for off_x, 708/512, so drop 98px on each side(left and right)
-    '''
-    off_y = (h - ny * size) // 2        # center the grid so margins are dropped evenly
+    ny, nx = h // size, w // size
+    off_y = (h - ny * size) // 2
     off_x = (w - nx * size) // 2
     for iy in range(ny):
         for ix in range(nx):
@@ -36,72 +84,61 @@ def tile_frame(frame, size=TILE):
             yield frame[y:y+size, x:x+size]
 
 
-def split_channels(tile):
-    # tile is RGB uint8 [H,W,3]. green LUT lives in G, magenta LUT lives in R(=B).
-    # peel back into two raw grayscale intensity maps. NO color anymore.
-    R, G, B = tile[..., 0], tile[..., 1], tile[..., 2]
-    chA = G      # green marker intensity (e.g. Sox2 / halo549)
-    chB = R      # magenta marker intensity (e.g. MCP / snap646). R approx B for green/magenta scheme.
-    return chA, chB
-
-
 def merge_preview(chA, chB):
-    # chA, chB: [H,W] uint8 grayscale arrays. reconstructs the familiar green/magenta composite.
-    # this is ONLY for human inspection — never feed this to the model.
-    rgb = np.dstack([chB, chA, chB]).astype(np.uint8)  # magenta=R&B, green=G
-    return rgb
+    return np.dstack([chB, chA, chB]).astype(np.uint8)  # magenta=R&B, green=G
 
 
-def process_vid(fps=25):
-    OUT_DIR.mkdir(parents=True, exist_ok=True)
+def process_tiffs():
+    OUT_DIR_A.mkdir(parents=True, exist_ok=True)
+    OUT_DIR_B.mkdir(parents=True, exist_ok=True)
     if SAVE_PREVIEWS:
         PREVIEW_DIR.mkdir(parents=True, exist_ok=True)
-    rows = []
 
-    for vi, vid in enumerate(VIDEOS):
-        vid_path = os.path.join(VIDEO_DIR, vid)
+    rows_A, rows_B = [], []
 
-        # load this video as frames based on frame rate, and save
-        cap = cv2.VideoCapture(vid_path)
-        native_fps = cap.get(cv2.CAP_PROP_FPS) or fps
-        step = max(1, round(native_fps / fps))  # e.g. native=50, target=25 -> keep every 2nd frame
+    for vi, name in enumerate(TIFFS):
+        path = os.path.join(SRC_DIR, name)
+        with tiff.TiffFile(path) as tf:
+            series = tf.series[0]
+            data, axes = move_to_tcyx(series.asarray(), series.axes)
+        frames, channels, h, w = data.shape
+        if channels < 2:
+            raise ValueError(f"{name}: expected >=2 channels, found {channels}")
 
-        read_idx, saved = 0, 0
-        while True:
-            ok, frame = cap.read()
-            if not ok:
-                break
-            if read_idx % step == 0:
-                frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)  # cv2 is BGR by default
-                # slice each kept frame into 512x512 tiles -> ~4 images per frame here
-                for ti, tile in enumerate(tile_frame(frame)):
-                    chA, chB = split_channels(tile)
+        print(f"{name}: {frames} frames, {channels} channels, {h}x{w}, dtype={data.dtype}")
 
-                    # two grayscale PNGs per tile. each is a valid viewable B/W image (mode 'L').
-                    base = f"v{vi:02d}_f{saved:03d}_t{ti}"
-                    fA   = f"{base}_chA.png"   # green marker
-                    fB   = f"{base}_chB.png"   # magenta marker
-                    Image.fromarray(chA, mode='L').save(OUT_DIR / fA)
-                    Image.fromarray(chB, mode='L').save(OUT_DIR / fB)
+        chA_u8 = channel_to_uint8(data[:, CH_A_INDEX, :, :])  # [T,Y,X] uint8
+        chB_u8 = channel_to_uint8(data[:, CH_B_INDEX, :, :])
 
-                    # optional: save green/magenta merged preview for visual sanity-checking
-                    if SAVE_PREVIEWS:
-                        preview = merge_preview(chA, chB)
-                        Image.fromarray(preview).save(PREVIEW_DIR / f"{base}_preview.png")
+        saved = 0
+        for fi in range(frames):
+            for ti, (tA, tB) in enumerate(zip(tile_frame(chA_u8[fi]), tile_frame(chB_u8[fi]))):
+                base = f"v{vi:02d}_f{saved:03d}_t{ti}"
+                fA = f"{base}_chA.png"
+                fB = f"{base}_chB.png"
 
-                    rows.append({"chA": fA, "chB": fB, "text": CAPTION})
-                saved += 1
-            read_idx += 1
-        cap.release()
-        print(f"{vid}: kept {saved} frames -> {len(rows)} tile-pairs so far")
+                Image.fromarray(tA, mode='L').save(OUT_DIR_A / fA)
+                Image.fromarray(tB, mode='L').save(OUT_DIR_B / fB)
 
-    with (OUT_DIR / "metadata.jsonl").open("w") as f:
-        for r in rows:
-            f.write(json.dumps(r) + "\n")
-    print(f"total: {len(rows)} tile-pairs -> {OUT_DIR}")
+                if SAVE_PREVIEWS:
+                    Image.fromarray(merge_preview(tA, tB)).save(PREVIEW_DIR / f"{base}_preview.png")
+
+                rows_A.append({"file_name": fA, "text": CAPTION_A})
+                rows_B.append({"file_name": fB, "text": CAPTION_B})
+            saved += 1
+        print(f"  -> {saved} frames saved, {len(rows_A)} tile-pairs so far")
+
+    for out_dir, rows in [(OUT_DIR_A, rows_A), (OUT_DIR_B, rows_B)]:
+        with (out_dir / "metadata.jsonl").open("w") as f:
+            for r in rows:
+                f.write(json.dumps(r) + "\n")
+
+    print(f"\ntotal tile-pairs: {len(rows_A)}")
+    print(f"chA -> {OUT_DIR_A}")
+    print(f"chB -> {OUT_DIR_B}")
     if SAVE_PREVIEWS:
         print(f"previews -> {PREVIEW_DIR}")
 
 
 if __name__ == "__main__":
-    process_vid()
+    process_tiffs()
