@@ -222,10 +222,13 @@ def get_stable_diffusion_model(args):
 
     model = model.to(args.device)
 
-    model.enable_xformers_memory_efficient_attention()
+    # model.enable_xformers_memory_efficient_attention()
 
     # turn-off xformers memory efficient attention for using forward AD
-    # model.disable_xformers_memory_efficient_attention()
+    model.disable_xformers_memory_efficient_attention()
+    model.unet.set_default_attn_processor()
+    model.vae.set_default_attn_processor()
+    model.enable_attention_slicing(1)      
     
     # change scheduler
     model.scheduler = DDIMScheduler.from_config(model.scheduler.config)

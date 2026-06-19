@@ -12,17 +12,23 @@ TIFFS = [
     "OneDrive_1_6-17-2026/bleach_corrected_DPHM_Sox2_MCP_halo549_snap646-03_MIP_merged.tif",
 ]
 
-OUT_DIR_A    = Path("data/microscopy_lora_chA")           # chA training images + metadata
-OUT_DIR_B    = Path("data/microscopy_lora_chB")           # chB training images + metadata
-PREVIEW_DIR  = Path("data/microscopy_lora_previews")      # green/magenta composites, inspection only
+OUT_DIR_A    = Path("data/microscopy_lora_chA_test")           # chA training images + metadata
+OUT_DIR_B    = Path("data/microscopy_lora_chB_test")           # chB training images + metadata
+PREVIEW_DIR  = Path("data/microscopy_lora_previews_test")      # green/magenta composites, inspection only
 
 CAPTION_A = "an image of cells in fluorescent microscopy, Sox2 halo549 channel"
 CAPTION_B = "an image of cells in fluorescent microscopy, MCP snap646 channel"
 TILE = 512
 
 SAVE_PREVIEWS = True
-LOWER_PCT = 0.35    # matches ImageJ default auto-contrast saturation
-UPPER_PCT = 99.65
+# LOWER_PCT = 0.35    
+# UPPER_PCT = 99.65
+
+# Replace LOWER_PCT / UPPER_PCT with these:
+CH_A_LO = 0      # Min from ImageJ B&C for Channel 1
+CH_A_HI = 821    # Max from ImageJ B&C for Channel 1
+CH_B_LO = 0      # Min from ImageJ B&C for Channel 2
+CH_B_HI = 2501    # Max from ImageJ B&C for Channel 2
 
 CH_A_INDEX = 0   # Sox2 / halo549 (green LUT) — flip to 1 if previews look swapped vs ImageJ
 CH_B_INDEX = 1   # MCP  / snap646 (magenta LUT)
@@ -63,15 +69,18 @@ def move_to_tcyx(data, axes):
     return np.moveaxis(data, order, range(4)), "TCYX"
 
 
-def channel_to_uint8(channel_stack):
-    # stretch once across the whole stack so frames stay comparable (data is bleach-corrected)
-    lo = np.percentile(channel_stack, LOWER_PCT)
-    hi = np.percentile(channel_stack, UPPER_PCT)
-    if hi <= lo:
-        lo, hi = float(channel_stack.min()), float(channel_stack.max())
+# def channel_to_uint8(channel_stack):
+#     # stretch once across the whole stack so frames stay comparable (data is bleach-corrected)
+#     lo = np.percentile(channel_stack, LOWER_PCT)
+#     hi = np.percentile(channel_stack, UPPER_PCT)
+#     if hi <= lo:
+#         lo, hi = float(channel_stack.min()), float(channel_stack.max())
+#     scaled = (channel_stack.astype(np.float32) - lo) / max(hi - lo, 1e-6)
+#     return (np.clip(scaled, 0, 1) * 255).astype(np.uint8)
+
+def channel_to_uint8(channel_stack, lo, hi):
     scaled = (channel_stack.astype(np.float32) - lo) / max(hi - lo, 1e-6)
     return (np.clip(scaled, 0, 1) * 255).astype(np.uint8)
-
 
 def tile_frame(frame, size=TILE):
     h, w = frame.shape[:2]
@@ -107,8 +116,8 @@ def process_tiffs():
 
         print(f"{name}: {frames} frames, {channels} channels, {h}x{w}, dtype={data.dtype}")
 
-        chA_u8 = channel_to_uint8(data[:, CH_A_INDEX, :, :])  # [T,Y,X] uint8
-        chB_u8 = channel_to_uint8(data[:, CH_B_INDEX, :, :])
+        chA_u8 = channel_to_uint8(data[:, CH_A_INDEX, :, :], CH_A_LO, CH_A_HI)
+        chB_u8 = channel_to_uint8(data[:, CH_B_INDEX, :, :], CH_B_LO, CH_B_HI)
 
         saved = 0
         for fi in range(frames):

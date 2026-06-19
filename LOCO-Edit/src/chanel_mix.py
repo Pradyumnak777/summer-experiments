@@ -57,11 +57,26 @@ def delta_to_rgb(dG, dM):
     #magenta pixels = magenta moved, WHITE = both moved (= coupled region).
     g = dG[0, 0].abs().float().cpu().numpy()
     m = dM[0, 0].abs().float().cpu().numpy()
-    g = g / (g.max() + 1e-8)
-    m = m / (m.max() + 1e-8)
+    vmax = max(g.max(), m.max()) + 1e-8 #shared max so relative magnitude is preserved
+    g = g / vmax
+    m = m / vmax
     rgb = np.stack([m, g, m], axis=-1)          # magenta=R&B, green=G
     return (rgb * 255).astype(np.uint8)
 
+
+
+def make_trio(dG, dM):
+    # returns side-by-side: [green gray | magenta gray | delta_rgb]
+    g = dG[0, 0].abs().float().cpu().numpy()
+    m = dM[0, 0].abs().float().cpu().numpy()
+    vmax = max(g.max(), m.max()) + 1e-8
+    g_norm = (g / vmax * 255).astype(np.uint8)
+    m_norm = (m / vmax * 255).astype(np.uint8)
+    # plain grayscale panels (R=G=B), stacked as RGB
+    green_panel   = np.stack([g_norm, g_norm, g_norm], axis=-1)
+    magenta_panel = np.stack([m_norm, m_norm, m_norm], axis=-1)
+    delta_panel   = delta_to_rgb(dG, dM)
+    return np.concatenate([green_panel, magenta_panel, delta_panel], axis=1)
 
 if __name__ == '__main__':
     args = parse_args()
@@ -108,24 +123,39 @@ if __name__ == '__main__':
         x0_edit = denoise_to_x0(edit, zt_edit, do_cfg).detach()
         delta = x0_edit - x0_base                       #this is the SCALAR in gradcam, [1,3,512,512]
 
+        avg_rb = (delta[:, 0:1] + delta[:, 2:3]) / 2
+        delta[:, 0:1] = avg_rb
+        delta[:, 2:3] = avg_rb
+        
         dG, dM = split_channels(delta)
-        eG = dG.pow(2).sum().item()
-        eM = dM.pow(2).sum().item()
-        total = eG + eM + 1e-12
-        coupling = min(eG, eM) / (max(eG, eM) + 1e-12)  # 1 = fully coupled, 0 = single-channel
+        
+        
+        # R=B sanity check: if this ratio is large, magenta split is unreliable for this direction
+        # rb_diff = (delta[:, 0:1] - delta[:, 2:3]).abs().mean().item()
+        # dm_mean  = dM.abs().mean().item()
+        # ratio    = rb_diff / (dm_mean + 1e-8)
+        # print(f'dir{k:02d}: |R-B|_mean={rb_diff:.4f}  dM_mean={dm_mean:.4f}  ratio={ratio:.3f}')
+        # eG = dG.pow(2).sum().item()
+        # eM = dM.pow(2).sum().item()
+        # total = eG + eM + 1e-12
+        # coupling = min(eG, eM) / (max(eG, eM) + 1e-12)  # 1 = fully coupled, 0 = single-channel
 
-        rows.append((k, eG, eM, eG / total, eM / total, coupling))
-        print(f'dir{k:02d}: energy_G={eG:.3f}  energy_M={eM:.3f}  '
-              f'(G%={eG/total:.2f} M%={eM/total:.2f})  coupling={coupling:.2f}')
+        # rows.append((k, eG, eM, eG / total, eM / total, coupling))
+        # print(f'dir{k:02d}: energy_G={eG:.3f}  energy_M={eM:.3f}  '
+        #       f'(G%={eG/total:.2f} M%={eM/total:.2f})  coupling={coupling:.2f}')
 
         # spatial map of the response in green/magenta scheme (white = coupled)
-        Image.fromarray(delta_to_rgb(dG, dM)).save(
-            os.path.join(out_dir, f'dir{k:02d}_response.png'))
+        # Image.fromarray(delta_to_rgb(dG, dM)).save(
+        #     os.path.join(out_dir, f'dir{k:02d}_response.png'))
+        
+        # spatial map of the response in green/magenta scheme (white = coupled)
+        Image.fromarray(make_trio(dG, dM)).save(
+            os.path.join(out_dir, f'dir{k:02d}_trio.png'))
 
     #
-    with open(os.path.join(out_dir, 'coupling.csv'), 'w') as f:
-        f.write('dir,energy_G,energy_M,G_frac,M_frac,coupling\n')
-        for r in rows:
-            f.write(','.join(str(x) for x in r) + '\n')
+    # with open(os.path.join(out_dir, 'coupling.csv'), 'w') as f:
+    #     f.write('dir,energy_G,energy_M,G_frac,M_frac,coupling\n')
+    #     for r in rows:
+    #         f.write(','.join(str(x) for x in r) + '\n')
 
     print(f'Done. Results in {out_dir}')
