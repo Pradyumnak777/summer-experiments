@@ -12,12 +12,12 @@ TIFFS = [
     "OneDrive_1_6-17-2026/bleach_corrected_DPHM_Sox2_MCP_halo549_snap646-03_MIP_merged.tif",
 ]
 
-OUT_DIR_A    = Path("data/microscopy_lora_chA_test")           # chA training images + metadata
-OUT_DIR_B    = Path("data/microscopy_lora_chB_test")           # chB training images + metadata
+OUT_DIR_A    = Path("data/microscopy_lora_green")           # chA training images + metadata
+OUT_DIR_B    = Path("data/microscopy_lora_magenta")           # chB training images + metadata
 PREVIEW_DIR  = Path("data/microscopy_lora_previews_test")      # green/magenta composites, inspection only
 
-CAPTION_A = "an image of cells in fluorescent microscopy, Sox2 halo549 channel"
-CAPTION_B = "an image of cells in fluorescent microscopy, MCP snap646 channel"
+CAPTION_A = "an image of green cells in fluorescent microscopy"
+CAPTION_B = "an image of magenta cells in fluorescent microscopy"
 TILE = 512
 
 SAVE_PREVIEWS = True

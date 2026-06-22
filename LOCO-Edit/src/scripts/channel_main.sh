@@ -9,18 +9,18 @@ python main.py \
     --model_name            Manojb/stable-diffusion-2-1-base                \
     --dataset_name          Examples_2                                        \
     --sample_idx            0                                               \
-    --for_prompt            "an image of cells in fluroscent microscopy"    \
+    --for_prompt            "an image of magenta cells in fluroscent microscopy"    \
     --edit_prompt           ""                                              \
-    --inv_prompt            "an image of cells in fluroscent microscopy"    \
+    --inv_prompt            "an image of magneta cells in fluroscent microscopy"    \
     --neg_prompt            ""                                              \
-    --lora_path             checkpoints_new/sd21_chA              \
+    --lora_path             checkpoints_new/sd21_magenta             \
     --mask_path             ""                             \
     --x_space_guidance_scale        0.35                                    \
     --x_space_guidance_num_step     16                                      \
     --edit_t                        0.5                                     \
     --run_edit_null_space_projection_zt     True                            \
     --non_semantic                  True                                    \
-    --note                          "channel_A"                  \
+    --note                          "channel_magenta"                  \
     --guidance_scale                1.5                                     \
     --guidance_scale_edit           1.0                                     \
     --seed                          42                                      \

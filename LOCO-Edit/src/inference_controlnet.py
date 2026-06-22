@@ -5,7 +5,6 @@ from PIL import Image
 from pathlib import Path
 from diffusers import StableDiffusionControlNetPipeline, ControlNetModel, UniPCMultistepScheduler
 
-# ── config ────────────────────────────────────────────────────────────────────
 DEVICE          = "cuda:0"          # physical GPU 9 via CUDA_VISIBLE_DEVICES=9
 BASE_MODEL      = "checkpoints_new/sd21_chB_fused"
 CONTROLNET_DIR  = "checkpoints_new/controlnet_chA2chB"
@@ -20,7 +19,6 @@ INPUT_IMAGES = [
     "data/microscopy_lora_chA/v00_f000_t0_chA.png",
     "data/microscopy_lora_chA/v00_f000_t1_chA.png",
 ]
-# ─────────────────────────────────────────────────────────────────────────────
 
 OUT_DIR.mkdir(exist_ok=True)
 

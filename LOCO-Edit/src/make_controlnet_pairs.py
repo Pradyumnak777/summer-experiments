@@ -22,7 +22,7 @@ with (OUT / "metadata.jsonl").open("w") as f:
             link.symlink_to(fb)
         f.write(json.dumps({
             "file_name": f"{base}_chB.png",   # relative -> becomes the decoded "image" column
-            "conditioning_image": str(fa),    # absolute -> we cast this to an image in the train script
+            "conditioning_image": str(fa),    # absolute 
             "text": CAPTION,
         }) + "\n")
         rows += 1
