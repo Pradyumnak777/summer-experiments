@@ -10,26 +10,25 @@ import os
 import matplotlib.pyplot as plt
 import torch.nn.functional as F
 
-if os.getenv("DEBUGPY", "0") == "1":
-    debugpy.listen(("0.0.0.0", 5678))
-    print("Waiting for debugger attach on 5678...")
-    debugpy.wait_for_client()
+# if os.getenv("DEBUGPY", "0") == "1":
+#     debugpy.listen(("0.0.0.0", 5678))
+#     print("Waiting for debugger attach on 5678...")
+#     debugpy.wait_for_client()
 
 
 #---config---
-DEVICE       = torch.device("cuda:9")
+DEVICE       = torch.device("cuda:0")
 BASE_MODEL   = "Manojb/stable-diffusion-2-1-base"
 LORA_PATH    = "checkpoints_new/sd21_magenta"
 CKPT_PATH    = "checkpoints_new/channel_cond_epoch19_new.pt"
 GREEN_DIR    = "data/microscopy_lora_green"
 FIXED_PROMPT = "an image of magenta cells in fluorescent microscopy"
-NUM_STEPS    = 50   #ddim is way faster than ddpm, 50 steps is enough for eval
+NUM_STEPS    = 50
 OUT_DIR      = "channel_cond/eval_outputs"
 
 import os
 os.makedirs(OUT_DIR, exist_ok=True)
 
-#load base + lora same as training
 pipe = StableDiffusionPipeline.from_pretrained(BASE_MODEL, torch_dtype=torch.float32)
 pipe.load_lora_weights(LORA_PATH)
 unet         = pipe.unet.to(DEVICE)
@@ -37,21 +36,17 @@ vae          = pipe.vae.to(DEVICE)
 text_encoder = pipe.text_encoder.to(DEVICE)
 tokenizer    = pipe.tokenizer
 
-#swap to ddim for fast inference
 scheduler = DDIMScheduler.from_pretrained(BASE_MODEL, subfolder="scheduler")
 scheduler.set_timesteps(NUM_STEPS)
 
-#freeze everything
 for model in [unet, vae, text_encoder]:
     for param in model.parameters():
         param.requires_grad = False
 
-#hook unet + build channel encoder
 hook_unet(unet)
-unet.to(DEVICE) 
+unet.to(DEVICE)
 channel_encoder = channelEncode(vae).to(DEVICE)
 
-#load trained weights
 ckpt = torch.load(CKPT_PATH, map_location=DEVICE)
 channel_encoder.load_state_dict(ckpt["channel_encoder"])
 for name, module in unet.named_modules():
@@ -61,57 +56,40 @@ for name, module in unet.named_modules():
 channel_encoder.eval()
 unet.eval()
 
-#transform for loading green images (same as training)
 transform = transforms.Compose([
     transforms.Resize((512, 512)),
     transforms.ToTensor(),
     transforms.Normalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5])
 ])
 
-'''
-center crop for custom_img to genreate unseen data..
-'''
-
-# transform = transforms.Compose([
-#     transforms.Resize(512),              #scale shorter edge to 512, keeps aspect ratio
-#     transforms.CenterCrop((512, 512)),   #cut 512x512 from center
-#     transforms.ToTensor(),
-#     transforms.Normalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5])
-# ])
-
-#pre-compute text embeddings once
 with torch.no_grad():
     text_inputs = tokenizer(
         [FIXED_PROMPT], return_tensors="pt",
         padding="max_length", max_length=tokenizer.model_max_length, truncation=True
     ).input_ids.to(DEVICE)
-    text_emb = text_encoder(text_inputs)[0]  #[1, 77, 768]
+    text_emb = text_encoder(text_inputs)[0]
+
 
 def generate(green_input):
     with torch.no_grad():
-        #check if input is already a tensor or a path
         if isinstance(green_input, torch.Tensor):
             green_tensor = green_input
         else:
             green_img = Image.open(green_input).convert("RGB")
             green_tensor = transform(green_img).unsqueeze(0).to(DEVICE)
 
-        image_tokens = channel_encoder(green_tensor)  #[1, 64, 768]
+        image_tokens = channel_encoder(green_tensor)
 
-        #set tokens on all processors
         for module in unet.modules():
             if isinstance(module, channelAttnProcessor):
-                module.image_tokens = image_tokens #handing green img tokens for cross attn..
+                module.image_tokens = image_tokens
 
-        #start from pure noise
-        latent = torch.randn(1, 4, 64, 64, device=DEVICE) #generation of magenta..
+        latent = torch.randn(1, 4, 64, 64, device=DEVICE)
 
-        #ddim denoising loop
         for t in scheduler.timesteps:
-            noise_pred = unet(latent, t, encoder_hidden_states=text_emb).sample #passed img tokens above, now passing text embs..
+            noise_pred = unet(latent, t, encoder_hidden_states=text_emb).sample
             latent = scheduler.step(noise_pred, t, latent).prev_sample
 
-        #decode latent -> image
         latent = latent / vae.config.scaling_factor
         image = vae.decode(latent).sample
         image = (image.clamp(-1, 1) + 1) / 2
@@ -121,31 +99,24 @@ def generate(green_input):
 
 def get_unseen_crop(img_path, tile=512):
     img = Image.open(img_path).convert("RGB")
-    w, h = img.size  #PIL: (width, height)
+    w, h = img.size
+    off_x = (w - tile) // 2
+    return img.crop((off_x, 256, off_x + tile, 256 + tile))
 
-    #match prepare_data_2ch tiling: horizontal center is fixed, tiles stack vertically
-    off_x = (w - tile) // 2          #same horizontal center the training tiles used
-    #training y positions are 0, 512, 1024, 1536 -> pick 256 (between t0 and t1), unseen
-    y = 256
-    x = off_x
-    crop = img.crop((x, y, x + tile, y + tile))
-    return crop
 
 def get_green_to_magenta_maps(green_input, token_ids=None, suffix="seen", img_name=None):
-    
+
     if img_name is None and isinstance(green_input, str):
         img_name = os.path.splitext(os.path.basename(green_input))[0]
     elif img_name is None:
         img_name = "tensor"
-        
+
     if isinstance(green_input, torch.Tensor):
         green_tensor = green_input
     else:
         green_tensor = transform(Image.open(green_input).convert("RGB")).unsqueeze(0).to(DEVICE)
 
     image_tokens = channel_encoder(green_tensor)
-
-    
 
     procs = []
     for module in unet.modules():
@@ -155,7 +126,7 @@ def get_green_to_magenta_maps(green_input, token_ids=None, suffix="seen", img_na
             procs.append(module)
 
     if token_ids is None:
-        token_ids = list(range(64))  #all 64 tokens
+        token_ids = list(range(64))
 
     accum = {k: torch.zeros(512, 512) for k in token_ids}
 
@@ -180,13 +151,23 @@ def get_green_to_magenta_maps(green_input, token_ids=None, suffix="seen", img_na
 
     green_vis = (green_tensor.squeeze().cpu().permute(1, 2, 0).numpy() * 0.5 + 0.5).clip(0, 1)
 
-    #save one image per token into a subfolder
-    token_dir = f"channel_cond/eval_outputs/tokens_{suffix}_{img_name}"
+    # print per-token max so you can see the distribution
+    token_maxes = {k: accum[k].max().item() for k in token_ids}
+    for k in token_ids:
+        print(f"token {k:02d} (r={k//8}, c={k%8}): max={token_maxes[k]:.4f}")
 
+    # percentile-based normalization: honest across tokens but doesn't let
+    # 1-2 outliers crush everything else to black
+    all_maxes = sorted(token_maxes.values())
+    p95 = all_maxes[int(0.95 * len(all_maxes))]
+    global_ref = p95 + 1e-6
+    print(f"p95 token max = {p95:.4f}  (used as colormap reference)")
 
+    token_dir = f"channel_cond/eval_outputs/tokens_{suffix}_{img_name}_new"
     os.makedirs(token_dir, exist_ok=True)
 
     for k in token_ids:
+        heat = (accum[k] / global_ref).clamp(0, 1)
         row_g, col_g = k // 8, k % 8
 
         fig, axes = plt.subplots(1, 2, figsize=(8, 4))
@@ -196,14 +177,12 @@ def get_green_to_magenta_maps(green_input, token_ids=None, suffix="seen", img_na
             (col_g * 64, row_g * 64), 64, 64,
             edgecolor="lime", facecolor="none", lw=2
         ))
-        axes[0].set_title(f"green token {k} (r={row_g}, c={col_g})")
+        axes[0].set_title(f"green token {k} (r={row_g}, c={col_g})  max={token_maxes[k]:.3f}")
         axes[0].axis("off")
 
-        heat = accum[k]
-        heat = (heat - heat.min()) / (heat.max() - heat.min() + 1e-6)
         axes[1].imshow(magenta)
-        axes[1].imshow(heat.numpy(), cmap="jet", alpha=0.5)
-        axes[1].set_title(f"magenta influence")
+        axes[1].imshow(heat.numpy(), cmap="jet", alpha=0.5, vmin=0, vmax=1)
+        axes[1].set_title("magenta influence")
         axes[1].axis("off")
 
         plt.tight_layout()
@@ -215,37 +194,30 @@ def get_green_to_magenta_maps(green_input, token_ids=None, suffix="seen", img_na
     for module in unet.modules():
         if isinstance(module, channelAttnProcessor):
             module.store_attn = False
-            
+
+
 def make_composite(green_tensor, magenta_tensor,
                    out_path="channel_cond/eval_outputs/composite.png"):
-    #convert both to single-channel grayscale (they're RGB but grayscale content)
-    green_gray   = green_tensor.squeeze().mean(dim=0).cpu()    #[512, 512]
-    magenta_gray = magenta_tensor.squeeze().mean(dim=0).cpu()  #[512, 512]
-
-    #unnormalize from [-1,1] → [0,1]
+    green_gray   = green_tensor.squeeze().mean(dim=0).cpu()
+    magenta_gray = magenta_tensor.squeeze().mean(dim=0).cpu()
     green_gray   = (green_gray * 0.5 + 0.5).clamp(0, 1)
-    magenta_gray = magenta_gray.clamp(0, 1)  #generate() already outputs [0,1]
-
-    #composite: magenta=R&B, green=G (same as prepare_data_2ch merge_preview)
-    composite = torch.stack([magenta_gray, green_gray, magenta_gray], dim=0)  #[3, 512, 512]
+    magenta_gray = magenta_gray.clamp(0, 1)
+    composite = torch.stack([magenta_gray, green_gray, magenta_gray], dim=0)
     save_image(composite, out_path)
     print(f"saved composite → {out_path}")
 
 
 if __name__ == "__main__":
-    use_unseen = False  # Set to True for unseen crops, False for training images
-    raw_path = "data/microscopy_lora_green/v00_f000_t3_chA.png"
-    # raw_path = "test_data_2/0.jpg"
-    
-    
+    use_unseen = False
+    raw_path = "data/microscopy_lora_green/v00_f000_t2_chA.png"
+
     suffix = "unseen" if use_unseen else "seen"
-    
+
     if use_unseen:
         img_name = os.path.splitext(os.path.basename(raw_path))[0] + "_unseen"
         crop = get_unseen_crop(raw_path)
         crop.save(f"channel_cond/eval_outputs/input_crop_{suffix}_{img_name}.png")
         green_input = transform(crop).unsqueeze(0).to(DEVICE)
-        img_name = os.path.splitext(os.path.basename(raw_path))[0] + "_unseen"
     else:
         green_input = raw_path
         img_name = os.path.splitext(os.path.basename(raw_path))[0]
@@ -258,26 +230,6 @@ if __name__ == "__main__":
     save_image(comparison, f"channel_cond/eval_outputs/eval_{suffix}_{img_name}.png")
     print(f"saved eval_{suffix}_{img_name}.png")
 
-    
     torch.manual_seed(42)
-    # get_green_to_magenta_maps(green_tensor, out_path=f"channel_cond/eval_outputs/green_to_magenta_{suffix}.png")
     get_green_to_magenta_maps(green_tensor, suffix=suffix, img_name=img_name)
     make_composite(green_tensor, generated, out_path=f"channel_cond/eval_outputs/composite_{suffix}_{img_name}.png")
-
-
-# if __name__ == "__main__":
-#     #run on first 5 green images for a quick visual check
-#     green_files = sorted([f for f in os.listdir(GREEN_DIR) if f.endswith(".png")])[:5]
-
-#     for fname in green_files:
-#         green_path = os.path.join(GREEN_DIR, fname)
-#         green_tensor, generated = generate(green_path)
-
-#         #unnormalize green for saving
-#         green_vis = (green_tensor.clamp(-1, 1) + 1) / 2
-
-#         #save side by side: green | generated magenta
-#         comparison = torch.cat([green_vis, generated], dim=3)  #concat along width
-#         out_path = os.path.join(OUT_DIR, fname.replace("chA", "eval"))
-#         save_image(comparison, out_path)
-#         print(f"saved {out_path}")

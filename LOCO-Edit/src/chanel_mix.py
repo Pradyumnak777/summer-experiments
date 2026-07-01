@@ -11,10 +11,10 @@ from utils.define_argparser import parse_args, preset
 from modules.edit import EditStableDiffusion
 
 
-if os.getenv("DEBUGPY", "0") == "1":
-    debugpy.listen(("0.0.0.0", 5678))
-    print("Waiting for debugger attach on 5678...")
-    debugpy.wait_for_client()
+# if os.getenv("DEBUGPY", "0") == "1":
+#     debugpy.listen(("0.0.0.0", 5678))
+#     print("Waiting for debugger attach on 5678...")
+#     debugpy.wait_for_client()
 
 
 # same CFG mode used everywhere else (stepping + x0 estimate)

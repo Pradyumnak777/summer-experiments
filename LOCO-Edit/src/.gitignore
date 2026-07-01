@@ -10,3 +10,4 @@ channel_viz/*
 !channel_viz/split_tiff_channels.py
 fid/
 OneDrive_1_6-17-2026/
+single_cells/

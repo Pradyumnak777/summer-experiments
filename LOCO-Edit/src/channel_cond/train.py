@@ -7,7 +7,7 @@ from data_util import PairedMicroscopyDataset
 from main import channelEncode, hook_unet, channelAttnProcessor
 
 #conf
-DEVICE       = torch.device("cuda")  #cuda:9 only! its free
+DEVICE       = torch.device("cuda:0")  #cuda:9 only! its free
 LORA_PATH    = "checkpoints_new/sd21_magenta"  #actual saved path
 BASE_MODEL   = "Manojb/stable-diffusion-2-1-base"
 GREEN_DIR    = "data/microscopy_lora_green"
@@ -57,6 +57,15 @@ with torch.no_grad():
         truncation=True
     ).input_ids.to(DEVICE)
     text_embeddings = text_encoder(text_inputs)[0]  #[1, 77, 768]
+    
+    null_inputs = tokenizer(
+        [""],
+        return_tensors="pt",
+        padding="max_length",
+        max_length=tokenizer.model_max_length,
+        truncation=True
+    ).input_ids.to(DEVICE)
+    null_embeddings = text_encoder(null_inputs)[0]  #[1, 77, 768]
 
 for epoch in range(NUM_EPOCHS):
     for step, (green_imgs, magenta_imgs) in enumerate(loader):
@@ -87,9 +96,9 @@ for epoch in range(NUM_EPOCHS):
         #expand text embeddings to match batch size
         text_emb = text_embeddings.expand(B, -1, -1)  #[B, 77, 768]
         
-        #randomly drop text 50% of the time so model cant just cheat with text
-        if torch.rand(1).item() < 0.5:
-            text_emb = torch.zeros_like(text_emb)  #null conditioning
+        #null ocnditioning 10% of the times..
+        if torch.rand(1).item() < 0.1:
+            text_emb = null_embeddings.expand(B, -1, -1)
 
         #unet predicts the noise we added
         noise_pred = unet(noisy_latents, timesteps, encoder_hidden_states=text_emb).sample
@@ -111,4 +120,4 @@ torch.save({
         for name, module in unet.named_modules()
         if isinstance(module, channelAttnProcessor)
     }
-}, f"checkpoints_new/channel_cond_epoch{epoch}.pt")
+}, f"checkpoints_new/channel_cond_epoch{epoch}_new.pt")

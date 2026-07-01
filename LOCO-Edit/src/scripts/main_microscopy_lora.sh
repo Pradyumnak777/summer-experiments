@@ -24,7 +24,7 @@ python main.py \
     --seed                          42                                      \
     --null_space_projection         False                                    \
     --pca_rank_null                 5                                       \
-    --pca_rank                      5                                       \
+    --pca_rank                      10                                       \
     --sampling_mode                 False                                   \
     --tilda_v_score_type            "null+(for-null)"                       \
     --dtype                         fp32                                    \
