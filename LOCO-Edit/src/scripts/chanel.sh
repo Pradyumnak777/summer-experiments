@@ -1,15 +1,15 @@
 python chanel_mix.py \
     --sh_file_name          chanel.sh                             \
-    --device                cuda:0                                          \
+    --device                cuda:9                                          \
     --model_name            Manojb/stable-diffusion-2-1-base                \
-     --note                          "microscopy_lora_sd21"                  \
-    --dataset_name          Examples                                        \
+     --note                          "microscopy_lora_sd21_cell"                  \
+    --dataset_name          Examples_3                                        \
     --sample_idx            0                                               \
-    --for_prompt            "an image of cells in fluroscent microscopy"    \
+    --for_prompt            "an image of  with magenta condensate and green gene burst"    \
     --edit_prompt           ""                                              \
-    --inv_prompt            "an image of cells in fluroscent microscopy"    \
+    --inv_prompt            "an image of  with magenta condensate and green gene burst"    \
     --neg_prompt            ""                                              \
-    --lora_path             checkpoints_new/sd21_microscopy_lora            \
+    --lora_path             checkpoints_new/sd21_cell_rgb            \
     --mask_path             ""                                              \
     --x_space_guidance_scale        0.35                                    \
     --x_space_guidance_num_step     16                                      \
@@ -21,7 +21,7 @@ python chanel_mix.py \
     --seed                          42                                      \
     --null_space_projection         False                                   \
     --pca_rank_null                 5                                       \
-    --pca_rank                      10                                       \
+    --pca_rank                      5                                       \
     --sampling_mode                 False                                   \
     --tilda_v_score_type            "null+(for-null)"                       \
     --dtype                         fp32                                    \

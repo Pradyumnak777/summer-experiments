@@ -5,20 +5,25 @@ from torch.optim import AdamW
 from torch.utils.data import DataLoader
 from data_util import PairedMicroscopyDataset
 from main import channelEncode, hook_unet, channelAttnProcessor
+import os
+import csv
 
+
+SAVE_DIR = "checkpoints_new/channel_cond_v2_redo"   
+os.makedirs(SAVE_DIR, exist_ok=True)
 #conf
-DEVICE       = torch.device("cuda:0")  #cuda:9 only! its free
-LORA_PATH    = "checkpoints_new/sd21_magenta"  #actual saved path
+DEVICE       = torch.device("cuda:9")  #cuda:9 only! its free
+LORA_PATH    = "checkpoints_new/sd21_cell_chB"  #actual saved path
 BASE_MODEL   = "Manojb/stable-diffusion-2-1-base"
-GREEN_DIR    = "data/microscopy_lora_green"
-MAGENTA_DIR  = "data/microscopy_lora_magenta"
-FIXED_PROMPT = "an image of magenta cells in fluorescent microscopy"
-BATCH_SIZE   = 2
-NUM_EPOCHS   = 20
+GREEN_DIR    = "data/singlecell_chA_split/train"
+MAGENTA_DIR  = "data/singlecell_chB_split/train"
+FIXED_PROMPT = "an image of condensate in a microscopic cell"
+BATCH_SIZE   = 16
+NUM_EPOCHS   = 15
 LR           = 1e-4
 
 #load everything via pipeline, cleanest way to get all components + lora together
-pipe = StableDiffusionPipeline.from_pretrained(BASE_MODEL, torch_dtype=torch.float32)
+pipe = StableDiffusionPipeline.from_pretrained(BASE_MODEL, torch_dtype=torch.bfloat16)
 pipe.load_lora_weights(LORA_PATH)
 unet         = pipe.unet.to(DEVICE)
 vae          = pipe.vae.to(DEVICE)
@@ -32,9 +37,13 @@ for model in [unet, vae, text_encoder]:
         param.requires_grad = False
 
 #hook unet AFTER freezing so new processor K,V projections stay trainable
+channel_encoder = channelEncode(vae).to(DEVICE, dtype=torch.bfloat16)
+
 hook_unet(unet)
 unet.to(DEVICE)
-channel_encoder = channelEncode(vae).to(DEVICE)
+for module in unet.modules():
+    if isinstance(module, channelAttnProcessor):
+        module.to(DEVICE, dtype=torch.bfloat16)   # to_k_img/to_v_img default to fp32 otherwise
 
 #only optimize the new stuf- channel encoder projection + image attn K,V
 trainable_params = list(channel_encoder.projection.parameters())
@@ -44,8 +53,15 @@ for module in unet.modules():
 
 optimizer = AdamW(trainable_params, lr=LR)
 
-dataset = PairedMicroscopyDataset(GREEN_DIR, MAGENTA_DIR)
+dataset = PairedMicroscopyDataset(GREEN_DIR, MAGENTA_DIR, size=256)
 loader  = DataLoader(dataset, batch_size=BATCH_SIZE, shuffle=True)
+
+#loss logger
+log_file = open(f"{SAVE_DIR}/loss_log.csv", "w", newline="")
+log_writer = csv.writer(log_file)
+log_writer.writerow(["global_step", "epoch", "loss"])
+ema = None
+global_step = 0
 
 #compute text embeddings once outside loop, prompt never changes so no point redoing every step
 with torch.no_grad():
@@ -69,8 +85,8 @@ with torch.no_grad():
 
 for epoch in range(NUM_EPOCHS):
     for step, (green_imgs, magenta_imgs) in enumerate(loader):
-        green_imgs   = green_imgs.to(DEVICE)
-        magenta_imgs = magenta_imgs.to(DEVICE)
+        green_imgs   = green_imgs.to(DEVICE, dtype=torch.bfloat16)
+        magenta_imgs = magenta_imgs.to(DEVICE, dtype=torch.bfloat16)
         B = green_imgs.shape[0]
 
         #encode magenta-> clean latent, scale it (SD always expects scaled latents)
@@ -87,6 +103,14 @@ for epoch in range(NUM_EPOCHS):
 
         #green channel -> image tokens [B, 64, 768]
         image_tokens = channel_encoder(green_imgs)
+        
+        '''
+        drop image tokens sometimes, so that CFG can be used..
+        '''
+        # if torch.rand(1).item() < 0.1:
+        #     image_tokens = torch.zeros_like(image_tokens)
+        keep = (torch.rand(B, 1, 1, device=DEVICE) >= 0.1)
+        image_tokens = image_tokens * keep
 
         #inject image tokens into every attn processor before unet sees the batch
         for module in unet.modules():
@@ -96,9 +120,9 @@ for epoch in range(NUM_EPOCHS):
         #expand text embeddings to match batch size
         text_emb = text_embeddings.expand(B, -1, -1)  #[B, 77, 768]
         
-        #null ocnditioning 10% of the times..
-        if torch.rand(1).item() < 0.1:
-            text_emb = null_embeddings.expand(B, -1, -1)
+        # #null ocnditioning 10% of the times..
+        # if torch.rand(1).item() < 0.1:
+        #     text_emb = null_embeddings.expand(B, -1, -1)
 
         #unet predicts the noise we added
         noise_pred = unet(noisy_latents, timesteps, encoder_hidden_states=text_emb).sample
@@ -108,9 +132,28 @@ for epoch in range(NUM_EPOCHS):
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
+        
+        #logging!
+        ema = loss.item() if ema is None else 0.98 * ema + 0.02 * loss.item()
+        log_writer.writerow([global_step, epoch, loss.item()])
+        global_step += 1
+        if step % 100 == 0:
+            log_file.flush()
+
+
 
         if step % 10 == 0:
-            print(f"epoch {epoch} | step {step} | loss {loss.item():.4f}")
+            print(f"epoch {epoch} | step {step} | loss {loss.item():.4f} | ema {ema:.4f}")
+
+    if epoch % 5 == 0:
+        torch.save({
+            "channel_encoder": channel_encoder.state_dict(),
+            "attn_processors": {
+                name: module.state_dict()
+                for name, module in unet.named_modules()
+                if isinstance(module, channelAttnProcessor)
+            }
+        }, f"{SAVE_DIR}/channel_cond_cell_epoch{epoch}_new.pt")
 
 #save channel encoder + new attn processors
 torch.save({
@@ -120,4 +163,6 @@ torch.save({
         for name, module in unet.named_modules()
         if isinstance(module, channelAttnProcessor)
     }
-}, f"checkpoints_new/channel_cond_epoch{epoch}_new.pt")
+}, f"{SAVE_DIR}/channel_cond_cell_epoch{epoch}_new.pt")
+
+log_file.close()

@@ -9,7 +9,7 @@ from diffusers import AutoencoderKL
 '''
 #train on cuda device 9 only! its free
 
-FINETUNED_MODEL_PATH = "checkpoints_new/sd21_magenta/pytorch_lora_weights.safetensors"
+FINETUNED_MODEL_PATH = "checkpoints_new/sd21_cell_chB/pytorch_lora_weights.safetensors"
 unet = UNet2DConditionModel.from_pretrained("Manojb/stable-diffusion-2-1-base", subfolder="unet")
 vae = AutoencoderKL.from_pretrained("Manojb/stable-diffusion-2-1-base", subfolder="vae") #for encoding channel
 
@@ -22,9 +22,9 @@ class channelEncode(nn.Module):
             
         #trainable projection: [B, 4, 64, 64] → [B, 768, 8, 8] → [B, 64, 768]
         self.projection = nn.Sequential(
-            nn.Conv2d(4, 256, kernel_size=3, padding=1),   # [B, 256, 64, 64]
+            nn.Conv2d(4, 256, kernel_size=3, padding=1),   # [B, 256, 32, 32]
             nn.SiLU(),
-            nn.Conv2d(256, 768, kernel_size=8, stride=8),  # [B, 768, 8, 8]
+            nn.Conv2d(256, 768, kernel_size=4, stride=4),  # [B, 768, 8, 8]
         )
 
         

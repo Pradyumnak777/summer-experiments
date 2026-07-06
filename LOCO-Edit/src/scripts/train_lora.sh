@@ -2,11 +2,11 @@
 # train_lora.sh
 
 export MODEL_NAME="Manojb/stable-diffusion-2-1-base"
-export DATA_DIR="data/microscopy_lora_new"
-export OUT_DIR="checkpoints_new/sd21_microscopy_lora_test"
+export DATA_DIR="data/singlecell_chB_split/train"
+export OUT_DIR="checkpoints_new/sd21_cell_chB"
 export TRAIN_SCRIPT="/scratch/pbk5339/summer/diffusers_repo/examples/text_to_image/train_text_to_image_lora.py"
 export HF_HOME="/scratch/pbk5339/caches/hf"
-export CUDA_VISIBLE_DEVICES=0
+export CUDA_VISIBLE_DEVICES=9
 
 accelerate launch --num_processes=1 --mixed_precision="bf16" \
   "$TRAIN_SCRIPT" \
@@ -14,18 +14,19 @@ accelerate launch --num_processes=1 --mixed_precision="bf16" \
   --train_data_dir=$DATA_DIR \
   --image_column=image \
   --caption_column=text \
-  --resolution=512 \
+  --resolution=256 \
   --random_flip \
-  --train_batch_size=2 \
-  --gradient_accumulation_steps=2 \
+  --train_batch_size=8 \
+  --gradient_accumulation_steps=1 \
   --gradient_checkpointing \
-  --max_train_steps=1500 \
+  --max_train_steps=6000 \
   --learning_rate=1e-4 \
   --lr_scheduler="constant" \
   --lr_warmup_steps=0 \
   --rank=8 \
-  --checkpointing_steps=250 \
-  --validation_prompt="an image of cells in fluroscent microscopy" \
+  --checkpointing_steps=500 \
+  --checkpoints_total_limit=4 \
+  --validation_prompt="an image of gene burst in a microscopic cell" \
   --validation_epochs=2 \
   --num_validation_images=2 \
   --seed=42 \

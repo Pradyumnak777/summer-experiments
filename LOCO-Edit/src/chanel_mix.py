@@ -105,7 +105,7 @@ if __name__ == '__main__':
     orig_rgb = np.array(Image.open(
         os.path.join(edit.result_folder, 'original.png')).convert('RGB').resize((512, 512)))
 
-    out_dir = os.path.join(edit.result_folder, 'channel_coupling')
+    out_dir = os.path.join(edit.result_folder, 'channel_coupling_cell')
     os.makedirs(out_dir, exist_ok=True)
 
     # same single-step magnitude as the gradcam script. controls edit poower(?)

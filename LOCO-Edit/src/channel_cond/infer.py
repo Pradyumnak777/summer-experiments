@@ -19,12 +19,12 @@ if os.getenv("DEBUGPY", "0") == "1":
 #---config---
 DEVICE       = torch.device("cuda:9")
 BASE_MODEL   = "Manojb/stable-diffusion-2-1-base"
-LORA_PATH    = "checkpoints_new/sd21_magenta"
+LORA_PATH    = "checkpoints_new/sd21_cell_chB"
 CKPT_PATH    = "checkpoints_new/channel_cond_epoch19_new.pt"
-GREEN_DIR    = "data/microscopy_lora_green"
-FIXED_PROMPT = "an image of magenta cells in fluorescent microscopy"
+GREEN_DIR    = "data/singlecell_chA_split/train"
+FIXED_PROMPT = "an image of condensate in a microscopic cell"
 NUM_STEPS    = 50   #ddim is way faster than ddpm, 50 steps is enough for eval
-OUT_DIR      = "channel_cond/eval_outputs"
+OUT_DIR      = "channel_cond/eval_outputs_cell"
 
 import os
 os.makedirs(OUT_DIR, exist_ok=True)
