@@ -15,3 +15,6 @@ single_cells_fixed/
 single_cell_fixed/
 single_cell_files/
 single_cell_files_fixed/
+vae_checkpoints/
+diffusion_checkpoints/
+testing/

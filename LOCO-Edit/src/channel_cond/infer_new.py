@@ -18,18 +18,18 @@ import torch.nn.functional as F
 '''
 cfg guidance
 '''
-GUIDANCE = 7.0
+GUIDANCE = 3
 
 
 #---config---
 DEVICE       = torch.device("cuda:9")
 BASE_MODEL   = "Manojb/stable-diffusion-2-1-base"
-LORA_PATH    = "checkpoints_new/sd21_cell_chB"
-CKPT_PATH    = "checkpoints_new/channel_cond_v2_redo/channel_cond_cell_epoch14_new.pt"
+LORA_PATH    = "checkpoints_new/sd21_cell_chB_new"
+CKPT_PATH    = "checkpoints_new/channel_cond_v3/channel_cond_cell_epoch9_new.pt"
 GREEN_DIR    = "data/singlecell_chA_split/train"
 FIXED_PROMPT = "an image of condensate in a microscopic cell"
 NUM_STEPS    = 50   #ddim is way faster than ddpm, 50 steps is enough for eval
-OUT_DIR      = f"channel_cond/eval_outputs_cell_cfg_{GUIDANCE}_redo"
+OUT_DIR      = f"channel_cond/eval_outputs_cell_cfg_{GUIDANCE}_latest"
 
 import os
 os.makedirs(OUT_DIR, exist_ok=True)

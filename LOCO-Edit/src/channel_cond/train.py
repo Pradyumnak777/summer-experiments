@@ -7,19 +7,19 @@ from data_util import PairedMicroscopyDataset
 from main import channelEncode, hook_unet, channelAttnProcessor
 import os
 import csv
+from tqdm import tqdm
 
-
-SAVE_DIR = "checkpoints_new/channel_cond_v2_redo"   
+SAVE_DIR = "checkpoints_new/channel_cond_v3"   
 os.makedirs(SAVE_DIR, exist_ok=True)
 #conf
 DEVICE       = torch.device("cuda:9")  #cuda:9 only! its free
-LORA_PATH    = "checkpoints_new/sd21_cell_chB"  #actual saved path
+LORA_PATH    = "checkpoints_new/sd21_cell_chB_new"  #actual saved path
 BASE_MODEL   = "Manojb/stable-diffusion-2-1-base"
 GREEN_DIR    = "data/singlecell_chA_split/train"
 MAGENTA_DIR  = "data/singlecell_chB_split/train"
 FIXED_PROMPT = "an image of condensate in a microscopic cell"
-BATCH_SIZE   = 16
-NUM_EPOCHS   = 15
+BATCH_SIZE   = 64
+NUM_EPOCHS   = 10
 LR           = 1e-4
 
 #load everything via pipeline, cleanest way to get all components + lora together
@@ -83,6 +83,9 @@ with torch.no_grad():
     ).input_ids.to(DEVICE)
     null_embeddings = text_encoder(null_inputs)[0]  #[1, 77, 768]
 
+total_steps = NUM_EPOCHS * len(loader)
+pbar = tqdm(total=total_steps, desc="training")
+
 for epoch in range(NUM_EPOCHS):
     for step, (green_imgs, magenta_imgs) in enumerate(loader):
         green_imgs   = green_imgs.to(DEVICE, dtype=torch.bfloat16)
@@ -140,6 +143,9 @@ for epoch in range(NUM_EPOCHS):
         if step % 100 == 0:
             log_file.flush()
 
+        pbar.update(1)
+        pbar.set_postfix(epoch=epoch, loss=f"{loss.item():.4f}", ema=f"{ema:.4f}")
+
 
 
         if step % 10 == 0:
@@ -165,4 +171,6 @@ torch.save({
     }
 }, f"{SAVE_DIR}/channel_cond_cell_epoch{epoch}_new.pt")
 
+log_file.close()
+pbar.close()
 log_file.close()
