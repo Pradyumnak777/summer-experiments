@@ -108,7 +108,7 @@ if __name__ == "__main__":
     J = full_jacobian(mu_anchor)       # [2, H, W, K]
     print(f"jacobian shape: {tuple(J.shape)}  (channels, H, W, latent_dim)\n")
 
-    print("== Q2: per-dim channel sensitivity ==")
+    print("== Q2: per-dim channel sensitivity ==")\
     channel_dim_sensitivity(J)
     save_jacobian_maps(J)
 

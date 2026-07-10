@@ -132,7 +132,7 @@ for epoch in range(NUM_EPOCHS):
     if epoch % SAVE_EVERY == 0 or epoch == NUM_EPOCHS - 1:
         sample_preview(8, epoch)
         torch.save(model.state_dict(), f"{SAVE_DIR}/unet_epoch{epoch}.pt")
-        #also save the EMA weights (what you'll actually sample/analyze with)
+        #also save the EMA weights
         ema.store(model.parameters()); ema.copy_to(model.parameters())
         torch.save(model.state_dict(), f"{SAVE_DIR}/unet_ema_epoch{epoch}.pt")
         ema.restore(model.parameters())

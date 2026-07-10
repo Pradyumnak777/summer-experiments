@@ -1,6 +1,5 @@
 '''
-2-channel UNet for pixel-space DDPM on 128x128 cell crops.
-Defined once so train + sample scripts always agree on architecture.
+2-channel UNet for pixel-space DDPM on 128x128 cell crops..
 '''
 from diffusers import UNet2DModel
 
