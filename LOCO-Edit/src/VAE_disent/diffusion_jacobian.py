@@ -1,32 +1,24 @@
-'''
-unsupervised disentanglement directions for the 2-channel DDPM, LOCO-Edit style.
-the PMP (posterior mean predictor) is get_x0: noisy x_t -> clean x0_hat.
-we SVD its Jacobian J = d x0_hat / d x_t.
 
-with 2 channels, J has a block structure:
-    J = [[J_AA, J_AB],
-         [J_BA, J_BB]],   J_XY = d(x0 chan X)/d(x_t chan Y)
-- full SVD          -> semantic edit directions (traversal: sweep alpha, decode, center = real recon)
-- off-diagonal SVD  -> "how does moving one channel affect the other" (coupling), same traversal format
-'''
 import os
 import torch
 import torch.nn.functional as F
 from torchvision.utils import make_grid, save_image
 from diffusers import DDPMScheduler
+import debugpy
 from data_utils import twoChannelDataset
 from diffusion_model import build_unet
 from diffusers.models.attention_processor import Attention, AttnProcessor
+import matplotlib.pyplot as plt
 
 
 DEVICE   = torch.device("cuda:9")
-CKPT     = "diffusion_checkpoints/ddpm_2ch_128/unet_ema_epoch50.pt"
+CKPT     = "diffusion_checkpoints/ddpm_2ch_128/unet_ema_epoch80.pt"
 CHA_DIR  = "data/singlecell_chA_split/train"
 CHB_DIR  = "data/singlecell_chB_split/train"
-OUT_DIR  = "diffusion_checkpoints/ddpm_2ch_128/jacobian_epoch50"
+OUT_DIR  = "diffusion_checkpoints/ddpm_2ch_128/jacobian_epoch80"
 IMG_SIZE = 128
-EDIT_T   = 300        # timestep to linearize at. larger = coarser/semantic, smaller = fine detail
-ANCHOR   = 1          # which dataset image to anchor on
+EDIT_T   = 300        #at what timestep to perform PMP/tweedies formula
+ANCHOR   = 1          #sum frame to anchor on
 K_FULL   = 5          # top-k directions for the full SVD
 K_BLOCK  = 5          # top-k for each channel block
 N_ITER   = 5          # subspace iterations (your power-method loop count)
@@ -34,7 +26,14 @@ EDIT_SCALE = 15.0     # sweep range for alpha (unit directions need a large mult
                        # own repo's get_delta_zt_via_grad, which uses 20.0. TUNE THIS: too small ->
                        # no visible change; too large -> image degrades into garbage.
 N_STEPS  = 7           # images per traversal strip (odd number -> exact center = alpha=0)
+SEED     = 0           # reproducibility: fixes both x_t's noise and the random SVD init
 os.makedirs(OUT_DIR, exist_ok=True)
+torch.manual_seed(SEED)
+
+if os.getenv("DEBUGPY", "0") == "1":
+    debugpy.listen(("0.0.0.0", 5678))
+    print("Waiting for debugger attach on 5678...")
+    debugpy.wait_for_client()
 
 # ---- model + scheduler ----
 model = build_unet(IMG_SIZE, channels=2).to(DEVICE)
@@ -55,7 +54,7 @@ H = W = IMG_SIZE
 SHAPE = (1, 2, H, W)
 
 
-# ---- the PMP: noisy x_t -> clean x0 estimate (DDPM closed form) ----
+#the PMPM estimator
 def get_x0(x_t, t_int):
     t = torch.tensor(t_int, device=x_t.device)
     eps = model(x_t, t).sample
@@ -63,9 +62,9 @@ def get_x0(x_t, t_int):
     return (x_t - (1 - ab).sqrt() * eps) / ab.sqrt()
 
 
-# ---- linearize the PMP at a fixed x_t: build reusable JVP / VJP operators ----
+#sm efficient way to calculate jacobian as full one will ahve a billion entires and will probs crash
 def build_linear_ops(x_t, t_int):
-    f = lambda x: get_x0(x, t_int)
+    f = lambda x: get_x0(x, t_int) #this is the function being differentiated (PMP predictor)
     _, vjp_raw = torch.func.vjp(f, x_t)
     def jvp(v):
         _, out = torch.func.jvp(f, (x_t,), (v,))
@@ -120,13 +119,17 @@ def expand_block_v(v_block, in_ch):
 
 
 @torch.no_grad()
+def save_direction_image(v_block, tag):
+    '''visualize the raw input-space singular vector: the actual perturbation pattern
+    injected into the input channel - i.e. *what changed in the input* before decoding.
+    signed direction -> min-max normalized to [0,1] just for viewing.'''
+    v = v_block.view(H, W)
+    v = (v - v.min()) / (v.max() - v.min() + 1e-8)
+    save_image(v.unsqueeze(0), f"{OUT_DIR}/{tag}_input_dir.png")
+
+
+@torch.no_grad()
 def save_edit_traversal(x_t, v_full, tag, edit_scale=EDIT_SCALE, n_steps=N_STEPS):
-    '''
-    sweep alpha in [-edit_scale, edit_scale], apply x_t + alpha*v_full, decode each
-    with the one-step PMP (get_x0) - same "preview" approach your own LOCO-Edit repo
-    uses in get_delta_zt_via_grad, so no expensive full re-sampling needed.
-    CENTER column (alpha=0) is the actual current reconstruction, unedited.
-    '''
     values = torch.linspace(-edit_scale, edit_scale, n_steps, device=DEVICE)
     x_batch = x_t + values.view(n_steps, 1, 1, 1) * v_full        # [n_steps, 2, H, W]
     x0_batch = get_x0(x_batch, EDIT_T)                             # [n_steps, 2, H, W]
@@ -139,14 +142,6 @@ def save_edit_traversal(x_t, v_full, tag, edit_scale=EDIT_SCALE, n_steps=N_STEPS
 
 @torch.no_grad()
 def save_original_vs_recon(x0_real, x0_hat_center):
-    '''
-    sanity check BEFORE trusting any traversal: does the unedited (alpha=0)
-    reconstruction at t=EDIT_T actually resemble the real input image?
-    top row = original, bottom row = reconstruction, per channel.
-    x0_hat_center is exactly the same value as the center column (alpha=0)
-    of every traversal strip above - this just pairs it directly against
-    the ground truth for a clean side-by-side look.
-    '''
     orig  = (x0_real[0]        * 0.5 + 0.5).clamp(0, 1)   # [2, H, W]
     recon = (x0_hat_center[0]  * 0.5 + 0.5).clamp(0, 1)   # [2, H, W]
 
@@ -161,28 +156,35 @@ def save_original_vs_recon(x0_real, x0_hat_center):
     print(f"  saved -> {OUT_DIR}/anchor_recon_chA.png, anchor_recon_chB.png (left=original, right=recon)")
 
 
-# ============================ run ============================
-dataset = twoChannelDataset(CHA_DIR, CHB_DIR)
-x0_real = dataset[ANCHOR].unsqueeze(0).to(DEVICE)
+# main fucntion
+
+dataset = twoChannelDataset(CHA_DIR, CHB_DIR) #loading data
+x0_real = dataset[ANCHOR].unsqueeze(0).to(DEVICE) #actual img
 noise   = torch.randn_like(x0_real)
-x_t = scheduler.add_noise(x0_real, noise, torch.tensor([EDIT_T], device=DEVICE))
+x_t = scheduler.add_noise(x0_real, noise, torch.tensor([EDIT_T], device=DEVICE)) #image noised to timestep t
 
-# ---- 0) sanity check: does the unedited reconstruction match the real image? ----
+
 with torch.no_grad():
+    '''
+    below basically applies the PMP/tweedie's formula which predicts clean image from a noised image
+    '''
     x0_hat_center = get_x0(x_t, EDIT_T)
-save_original_vs_recon(x0_real, x0_hat_center)
+save_original_vs_recon(x0_real, x0_hat_center) #saving original vs PMP predicted on image
 
-jvp, vjp = build_linear_ops(x_t, EDIT_T)
+jvp, vjp = build_linear_ops(x_t, EDIT_T) 
 
-# ---- 1) FULL jacobian SVD: semantic directions, saved as real edit traversals ----
+'''
+below block perform jacobian FULL (both channels- 32,768 data)
+And then perform SVD to get top directions, along which x-t will be nudged to see the edit/disentanglement
+'''
 jf, vf, din, dout = make_full_ops(jvp, vjp)
 U, S, Vd = jacobian_svd(jf, vf, din, dout, K_FULL, N_ITER)
 
-print("\n=== FULL Jacobian SVD (semantic edit directions) ===")
+print("\nbelow are the actual edit directions for the full 32,768 jacobian (2 channel)")
 print("dir |  sigma   | A-energy | B-energy | verdict")
 U_img = U.T.view(K_FULL, 2, H, W)
 for i in range(K_FULL):
-    eA = U_img[i, 0].pow(2).sum().item()
+    eA = U_img[i, 0].pow(2).sum().item() #u is the edit direction o the output..?
     eB = U_img[i, 1].pow(2).sum().item()
     fracA = eA / (eA + eB + 1e-8)
     verdict = "A-specific" if fracA > 0.8 else "B-specific" if fracA < 0.2 else "SHARED/coupled"
@@ -190,21 +192,37 @@ for i in range(K_FULL):
     v_i = Vd[:, i].view(1, 2, H, W)
     save_edit_traversal(x_t, v_i, f"full_dir{i}")
 
-# ---- 2) CHANNEL-BLOCK SVD: coupling strength + real traversal for the CROSS blocks ----
-print("\n=== per-block top singular values (coupling structure) ===")
+
+
+print("\nbelow are J_AB, J_BA, etc")
 print("block | " + " | ".join(f"s{j}" for j in range(K_BLOCK)))
 blocks = {"J_AA": (0, 0), "J_BB": (1, 1), "J_BA (A->B)": (0, 1), "J_AB (B->A)": (1, 0)}
 cross_blocks = {"J_BA (A->B)", "J_AB (B->A)"}   # off-diagonal only -> where the real coupling lives
 
+spectra = {}   # collect all blocks' singular values for plotting
 for name, (in_ch, out_ch) in blocks.items():
     jb, vb, di, do = make_block_ops(jvp, vjp, in_ch, out_ch)
     Ub, Sb, Vb = jacobian_svd(jb, vb, di, do, K_BLOCK, N_ITER)
     print(f"{name:11s} | " + " | ".join(f"{s:6.3f}" for s in Sb.tolist()))
+    spectra[name] = Sb.tolist()
 
     if name in cross_blocks:
         safe_name = name.split(" ")[0]   # "J_BA", "J_AB" - strip the "(A->B)" for filenames
         for i in range(K_BLOCK):
+            save_direction_image(Vb[:, i], f"{safe_name}_dir{i}")   # the input perturbation pattern (what changed)
             v_full = expand_block_v(Vb[:, i], in_ch)
             save_edit_traversal(x_t, v_full, f"{safe_name}_dir{i}")
+
+# plt.figure(figsize=(6, 4))
+# for name, s_vals in spectra.items():
+#     plt.plot(range(len(s_vals)), s_vals, marker="o", label=name)
+# plt.yscale("log")                      # cross-block values likely much smaller -> log scale shows both clearly
+# plt.xlabel("rank (s0, s1, ...)")
+# plt.ylabel("singular value")
+# plt.title(f"Block Jacobian singular value spectra (t={EDIT_T})")
+# plt.legend()
+# plt.tight_layout()
+# plt.savefig(f"{OUT_DIR}/singular_value_spectra.png")
+# plt.close()
 
 print(f"\nsaved traversal grids to {OUT_DIR}/")
