@@ -21,10 +21,8 @@ EDIT_T   = 300        #at what timestep to perform PMP/tweedies formula
 ANCHOR   = 1          #sum frame to anchor on
 K_FULL   = 5          # top-k directions for the full SVD
 K_BLOCK  = 5          # top-k for each channel block
-N_ITER   = 5          # subspace iterations (your power-method loop count)
-EDIT_SCALE = 15.0     # sweep range for alpha (unit directions need a large multiplier - c.f. your
-                       # own repo's get_delta_zt_via_grad, which uses 20.0. TUNE THIS: too small ->
-                       # no visible change; too large -> image degrades into garbage.
+N_ITER   = 5        #similar to locoedt(?)
+EDIT_SCALE = 15.0     # sweep range for alpha (unit directions need a large multiplier - c.f.
 N_STEPS  = 7           # images per traversal strip (odd number -> exact center = alpha=0)
 SEED     = 0           # reproducibility: fixes both x_t's noise and the random SVD init
 os.makedirs(OUT_DIR, exist_ok=True)
@@ -179,6 +177,10 @@ And then perform SVD to get top directions, along which x-t will be nudged to se
 '''
 jf, vf, din, dout = make_full_ops(jvp, vjp)
 U, S, Vd = jacobian_svd(jf, vf, din, dout, K_FULL, N_ITER)
+
+os.makedirs(f"{OUT_DIR}/data_files", exist_ok=True)
+torch.save((x_t.detach().cpu(), EDIT_T), f"{OUT_DIR}/data_files/x_t.pt") #this is the noise, to be used in gradCAM
+torch.save(Vd.detach().cpu(), f"{OUT_DIR}/data_files/Vd.pt") #
 
 print("\nbelow are the actual edit directions for the full 32,768 jacobian (2 channel)")
 print("dir |  sigma   | A-energy | B-energy | verdict")
