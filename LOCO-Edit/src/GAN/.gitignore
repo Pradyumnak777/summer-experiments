@@ -7,3 +7,6 @@ gen_out/
 gen_test/
 gen_test_final/
 stylegan2-ada-pytorch/
+gan_inversion_results/
+gan_latent_traversal_inverted_w/
+gan_pca_results_inverted_w/
