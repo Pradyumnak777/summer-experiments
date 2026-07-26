@@ -19,11 +19,9 @@ from diffusion_model import build_unet
 
 DEVICE      = torch.device("cuda:9")
 CH_DIR      = "data/singlecell_chB_split/train"   #training single channel
-SAVE_DIR    = "diffusion_checkpoints/ddpm_chB_128"
+SAVE_DIR    = "diffusion_checkpoints/ddpm_chB_128_no_preweights"
 IMG_SIZE    = 128
 
-PRETRAINED_MODEL = "diffusion_checkpoints/ddpm_2ch_128/unet_epoch80.pt"
-#could swap to unet_ema_epoch80.pt instead, probably the better converged weights
 
 TARGET_CHANNEL = 1        #0 = chA, 1 = chB
 BATCH_SIZE     = 32
@@ -40,25 +38,25 @@ USE_L2SP    = False
 os.makedirs(f"{SAVE_DIR}/samples", exist_ok=True)
 
 
-def port_2ch_to_1ch(pretrained_path, target_channel, img_size):
-    sd_2ch = torch.load(pretrained_path, map_location="cpu")
-    model  = build_unet(img_size, channels=1)
-    sd_1ch = model.state_dict()
+# def port_2ch_to_1ch(pretrained_path, target_channel, img_size):
+#     sd_2ch = torch.load(pretrained_path, map_location="cpu")
+#     model  = build_unet(img_size, channels=1)
+#     sd_1ch = model.state_dict()
 
-    #only these 3 tensors depend on channel count, everything else copies straight over
-    for k, v in sd_2ch.items():
-        if k == "conv_in.weight":
-            #slice, not average, for the specific channel wts
-            sd_1ch[k] = v[:, target_channel:target_channel+1].clone()
-        elif k == "conv_out.weight":
-            sd_1ch[k] = v[target_channel:target_channel+1].clone()
-        elif k == "conv_out.bias":
-            sd_1ch[k] = v[target_channel:target_channel+1].clone()
-        else:
-            sd_1ch[k] = v.clone()
+#     #only these 3 tensors depend on channel count, everything else copies straight over
+#     for k, v in sd_2ch.items():
+#         if k == "conv_in.weight":
+#             #slice, not average, for the specific channel wts
+#             sd_1ch[k] = v[:, target_channel:target_channel+1].clone()
+#         elif k == "conv_out.weight":
+#             sd_1ch[k] = v[target_channel:target_channel+1].clone()
+#         elif k == "conv_out.bias":
+#             sd_1ch[k] = v[target_channel:target_channel+1].clone()
+#         else:
+#             sd_1ch[k] = v.clone()
 
-    model.load_state_dict(sd_1ch)
-    return model
+#     model.load_state_dict(sd_1ch)
+#     return model
 
 
 class singleChannelDataset(Dataset):
@@ -83,7 +81,8 @@ dataset = singleChannelDataset(CH_DIR)
 loader  = DataLoader(dataset, batch_size=BATCH_SIZE, shuffle=True,
                      num_workers=4, drop_last=True)
 
-model     = port_2ch_to_1ch(PRETRAINED_MODEL, TARGET_CHANNEL, IMG_SIZE).to(DEVICE)
+# model     = port_2ch_to_1ch(PRETRAINED_MODEL, TARGET_CHANNEL, IMG_SIZE).to(DEVICE)
+model = build_unet(IMG_SIZE, channels=1).to(DEVICE) 
 scheduler = DDPMScheduler(num_train_timesteps=NUM_TRAIN_TIMESTEPS)
 
 if USE_L2SP:
@@ -106,7 +105,7 @@ steps_per_epoch = len(loader)
 total_steps     = steps_per_epoch * NUM_EPOCHS
 
 print(f"device            : {DEVICE}")
-print(f"warm-started from  : {PRETRAINED_MODEL}")
+# print(f"warm-started from  : {PRETRAINED_MODEL}")
 print(f"target channel     : {TARGET_CHANNEL}  ({'chA' if TARGET_CHANNEL==0 else 'chB'})")
 # print(f"L2-SP              : {USE_L2SP}  (weight {L2SP_WEIGHT})")
 print(f"dataset size       : {len(dataset)} images")
@@ -137,7 +136,25 @@ train_start = time.time()
 #tqdm tracks it/s and elapsed/remaining on its own, just feed it total_steps up front
 progress = tqdm(total=total_steps, desc="training", dynamic_ncols=True)
 
-for epoch in range(NUM_EPOCHS):
+'''
+code for resuing if it fails/reboot
+'''
+
+RESUME_FROM = None
+
+start_epoch = 0
+global_step = 0
+if RESUME_FROM and os.path.exists(RESUME_FROM):
+    ckpt = torch.load(RESUME_FROM, map_location=DEVICE)
+    model.load_state_dict(ckpt["model"])
+    optimizer.load_state_dict(ckpt["optimizer"])
+    lr_sched.load_state_dict(ckpt["lr_sched"])
+    ema.load_state_dict(ckpt["ema"])
+    start_epoch  = ckpt["epoch"] + 1
+    global_step  = ckpt["global_step"]
+    print(f"resumed from epoch {ckpt['epoch']}, step {global_step}")
+
+for epoch in range(start_epoch, NUM_EPOCHS):
     model.train()
     tqdm.write(f"\n--- starting epoch {epoch}/{NUM_EPOCHS} ---")
 
@@ -184,6 +201,18 @@ for epoch in range(NUM_EPOCHS):
         ema.store(model.parameters()); ema.copy_to(model.parameters())
         torch.save(model.state_dict(), f"{SAVE_DIR}/unet_ema_epoch{epoch}.pt")
         ema.restore(model.parameters())
+
+        #resume checkpoint - separate from the inspection snapshots above,
+        #this one gets overwritten every time, only ever need the latest
+        torch.save({
+            "model": model.state_dict(),
+            "optimizer": optimizer.state_dict(),
+            "lr_sched": lr_sched.state_dict(),
+            "ema": ema.state_dict(),
+            "epoch": epoch,
+            "global_step": global_step,
+        }, f"{SAVE_DIR}/resume_latest.pt")
+
         tqdm.write(f"  [checkpoint] saved model + samples at epoch {epoch}")
 
 progress.close()

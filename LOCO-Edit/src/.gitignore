@@ -18,3 +18,4 @@ single_cell_files_fixed/
 vae_checkpoints/
 diffusion_checkpoints/
 testing/
+cross_attn_checkpoints/
