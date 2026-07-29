@@ -19,3 +19,6 @@ vae_checkpoints/
 diffusion_checkpoints/
 testing/
 cross_attn_checkpoints/
+cross_attn/
+diffusion_1ch_comparisons/
+diffusion_1ch_recon_comparisons/

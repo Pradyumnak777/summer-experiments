@@ -18,14 +18,14 @@ from diffusers.training_utils import EMAModel
 from diffusion_model import build_unet
 
 DEVICE      = torch.device("cuda:9")
-CH_DIR      = "data/singlecell_chB_split/train"   #training single channel
-SAVE_DIR    = "diffusion_checkpoints/ddpm_chB_128"
+CH_DIR      = "data/singlecell_chA_split/train"   #training single channel
+SAVE_DIR    = "diffusion_checkpoints/ddpm_chA_128"
 IMG_SIZE    = 128
 
 PRETRAINED_MODEL = "diffusion_checkpoints/ddpm_2ch_128/unet_epoch80.pt"
 #could swap to unet_ema_epoch80.pt instead, probably the better converged weights
 
-TARGET_CHANNEL = 1        #0 = chA, 1 = chB
+TARGET_CHANNEL = 0        #0 = chA, 1 = chB
 BATCH_SIZE     = 32
 NUM_EPOCHS     = 80        #warm start converges faster than the 200 the 2ch needed from scratch
 LR             = 5e-5      #lower than scratch LR since we're fine-tuning a good init

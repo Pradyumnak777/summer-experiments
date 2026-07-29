@@ -71,7 +71,12 @@ class CrossAttnProcessor(nn.Module):
         self.to_k_img = nn.Linear(token_dim, hidden_dim, bias=False)
         self.to_v_img = nn.Linear(token_dim, hidden_dim, bias=False)
         nn.init.zeros_(self.to_v_img.weight)   #start as a no-op
-        self.scale = scale
+        
+        '''
+        below is the scale of the cross attention weight. making this learnable
+        '''
+        self.scale = nn.Parameter(torch.tensor(float(scale)))
+        
         self.tokens = None        #set before each forward (source-channel tokens)
         self.store_attn = False   #flip on at inference to capture the cross-attn map
         self.attn_map = None
