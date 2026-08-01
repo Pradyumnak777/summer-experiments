@@ -1,13 +1,4 @@
-'''
-train the channel cross-attention adapter (IP-adapter style).
-  denoiser = TARGET-channel unet (frozen)
-  encoder  = SOURCE-channel unet down-path (frozen trunk + small trainable proj)
-  trainable = added cross-attn K,V in the denoiser + the encoder proj
 
-this config = A->B : denoiser=chB, encoder=chA (condition chB formation on chA).
-flip SRC/TGT to train the B->A adapter.
-run from src/:  python train_cross_attn.py
-'''
 import os, csv, time
 import torch
 import torch.nn.functional as F
@@ -44,20 +35,17 @@ NUM_EPOCHS = 50
 LR         = 1e-4
 TOKEN_DIM  = 256
 STOP_BLOCK = 3       #tap chA encoder after down_blocks[3] -> 8x8 = 64 tokens
-TOKEN_DROP = 0.1     #drop tokens 10% of the time so CFG is possible later
+TOKEN_DROP = 0.1     
 os.makedirs(SAVE_DIR, exist_ok=True)
 
-#---- denoiser (target channel), frozen ----
 denoiser = build_unet(IMG_SIZE, channels=1).to(DEVICE)
 denoiser.load_state_dict(torch.load(TGT_CKPT, map_location=DEVICE))
 denoiser.requires_grad_(False)
 
-#---- encoder (source channel down-path) ----
 src_unet = build_unet(IMG_SIZE, channels=1)
 src_unet.load_state_dict(torch.load(SRC_CKPT, map_location="cpu"))
 encoder = ChannelEncoder(src_unet, stop_at_block=STOP_BLOCK, token_dim=TOKEN_DIM).to(DEVICE)
 
-#---- install decoupled cross-attn into the (frozen) denoiser ----
 procs = install_cross_attn(denoiser, token_dim=TOKEN_DIM, scale=1.0)
 for p in procs.values():
     p.to(DEVICE)

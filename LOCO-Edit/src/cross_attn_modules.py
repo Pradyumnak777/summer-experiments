@@ -1,11 +1,4 @@
-'''
-building blocks for the channel cross-attention (IP-adapter style) experiment.
-  - ChannelEncoder: reuse a trained single-channel UNet's down-path as a frozen
-    feature extractor -> spatial tokens (Option B, the internal-rep encoder)
-  - CrossAttnProcessor: decoupled cross-attention. keep the denoiser's original
-    self-attention, ADD a trainable attention over the source-channel tokens on top
-  - install/set helpers to wire it into a UNet2DModel denoiser
-'''
+
 import math
 import torch
 import torch.nn as nn

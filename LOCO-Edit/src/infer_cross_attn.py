@@ -1,19 +1,3 @@
-'''
-run the trained cross-attn adapter on HELD-OUT test pairs and visualize, for each
-chA region/token, WHERE in chB the denoiser draws on it. two views per sample:
-  1. aggregate.png     - chA importance summed over the WHOLE chB image (coarse, global)
-  2. grid.png          - ALL chA tokens at once, one small chB-attention heatmap
-                          per chA cell, arranged to match chA's own spatial layout
-  3. points/*.png      - the same per-token maps, saved individually, full size,
-                          with a bounding box on chA showing that token's cell
-each sample gets its own folder under OUT_DIR.
-run from src/:  python infer_cross_attn.py
-
-NOTE: TGT_CKPT/SRC_CKPT must be the SAME checkpoints ADAPTER was trained against -
-the trained to_k_img/to_v_img weights are fit to those specific backbones' hidden-
-state statistics. Bumping these to a later epoch needs retraining train_cross_attn.py
-against the new checkpoints first, not just swapping the path here.
-'''
 import os, math
 import torch
 import numpy as np
@@ -39,8 +23,8 @@ TGT_IDX, SRC_IDX = 1, 0
 IMG_SIZE      = 128
 TOKEN_DIM     = 256
 STOP_BLOCK    = 3
-PROBE_T       = 800        #timestep to probe attention at (mid-low, structure is forming)
-N_SAMPLES     = 7          #how many held-out samples to run
+PROBE_T       = 500        #timestep to probe attention at (mid-low, structure is forming)
+N_SAMPLES = [9000]
 N_NOISE_DRAWS = 5          #average the attn map over this many independent noise draws
 SEED          = 0
 OUT_DIR       = f"cross_attn/AtoB/attn_maps_probe_{PROBE_T}"
@@ -196,9 +180,8 @@ def save_sample(sample_dir, chA, chB, agg, per_token, src_side, tgt_side):
             plt.close(fig)
 
 
-idx = torch.linspace(0, len(dataset) - 1, N_SAMPLES).long()
-for n, i in enumerate(idx):
-    x = dataset[int(i)].unsqueeze(0).to(DEVICE)       # [1, 2, H, W]
+for n, i in enumerate(N_SAMPLES):
+    x = dataset[i].unsqueeze(0).to(DEVICE)            # [1, 2, H, W]
     src_img = x[:, SRC_IDX:SRC_IDX+1]
     tgt_img = x[:, TGT_IDX:TGT_IDX+1]
 
@@ -208,7 +191,8 @@ for n, i in enumerate(idx):
 
     sample_dir = f"{OUT_DIR}/sample_{n:02d}"
     save_sample(sample_dir, chA, chB, agg, per_token, src_side, tgt_side)
-    print(f"sample {n:02d} (dataset idx {int(i)}) -> {sample_dir}/  "
+    print(f"sample {n:02d} (dataset idx {i}) -> {sample_dir}/  "
           f"({src_side*src_side} chA tokens, grid.png + {src_side*src_side} individual files)")
+
 
 print(f"\ndone. {N_SAMPLES} samples saved under {OUT_DIR}/sample_XX/")

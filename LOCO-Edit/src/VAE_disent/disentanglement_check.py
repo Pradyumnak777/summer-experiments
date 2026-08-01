@@ -13,9 +13,9 @@ MODEL_PATH = "vae_checkpoints/beta_vae_beta=1/vae_epoch99.pt"
 LATENT_DIM = 16          # must match what MODEL_PATH was trained with
 DEVICE     = torch.device("cuda:9")
 
-CHA_DIR = "data/singlecell_chA_split/train"
-CHB_DIR = "data/singlecell_chB_split/train"
-OUT_DIR = "vae_checkpoints/beta_vae_beta=1/disentangle_checks"
+CHA_DIR = "data/singlecell_chA_split/validation"
+CHB_DIR = "data/singlecell_chB_split/validation"
+OUT_DIR = "vae_checkpoints/beta_vae_beta=1_16/disentangle_checks_val"
 os.makedirs(OUT_DIR, exist_ok=True)
 
 model = twoChannelVAE(latent_dim=LATENT_DIM).to(DEVICE)

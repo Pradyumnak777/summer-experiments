@@ -20,7 +20,7 @@ BATCH_SIZE  = 64
 NUM_EPOCHS  = 100
 LR          = 3e-4
 BETA        = 1
-LATENT_DIM  = 32
+LATENT_DIM  = 16
 
 SAVE_DIR = f"vae_checkpoints/beta_vae_beta={BETA}_{LATENT_DIM}"
 os.makedirs(SAVE_DIR, exist_ok=True)
@@ -73,7 +73,7 @@ for epoch in range(NUM_EPOCHS):
         log_writer.writerow([global_step, epoch, total_loss.item(), recon_loss.item(), kl_loss.item()])
         global_step += 1
 
-        if step % 100 == 0:
+        if step % 20 == 0:
             print(f"epoch {epoch} | step {step} | total {total_loss.item():.2f} | "
                   f"recon {recon_loss.item():.2f} | kl {kl_loss.item():.2f}")
 
