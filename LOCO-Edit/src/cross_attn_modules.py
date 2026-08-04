@@ -61,8 +61,8 @@ class CrossAttnProcessor(nn.Module):
     '''
     def __init__(self, hidden_dim, token_dim, scale=1.0):
         super().__init__()
-        self.to_k_img = nn.Linear(token_dim, hidden_dim, bias=False)
-        self.to_v_img = nn.Linear(token_dim, hidden_dim, bias=False)
+        self.to_k_img = nn.Linear(token_dim, hidden_dim, bias=False) #this is the learnable weight matrix for K (keys)
+        self.to_v_img = nn.Linear(token_dim, hidden_dim, bias=False) #similarly for values
         nn.init.zeros_(self.to_v_img.weight)   #start as a no-op
         
         '''
@@ -73,6 +73,7 @@ class CrossAttnProcessor(nn.Module):
         self.tokens = None        #set before each forward (source-channel tokens)
         self.store_attn = False   #flip on at inference to capture the cross-attn map
         self.attn_map = None
+        self.token_mask = None ##NOTE: masking out edge tokens and considering only ones within the mask!!
 
     def __call__(self, attn, hidden_states, encoder_hidden_states=None,
                  attention_mask=None, temb=None, **kwargs):
@@ -103,11 +104,20 @@ class CrossAttnProcessor(nn.Module):
         if self.tokens is not None:
             k_img = attn.head_to_batch_dim(self.to_k_img(self.tokens))
             v_img = attn.head_to_batch_dim(self.to_v_img(self.tokens))
-            img_probs = attn.get_attention_scores(q, k_img)     # [B*heads, HW, N_tok]
+
+            img_attn_mask = None
+            if self.token_mask is not None:
+                b, n_tok = self.token_mask.shape
+                bias = torch.zeros(b, 1, n_tok, device=q.device, dtype=q.dtype)
+                bias.masked_fill_(~self.token_mask.unsqueeze(1), float('-inf'))
+                img_attn_mask = attn.prepare_attention_mask(bias, n_tok, b)
+
+            img_probs = attn.get_attention_scores(q, k_img, img_attn_mask)
             img_out   = attn.batch_to_head_dim(torch.bmm(img_probs, v_img))
             if self.store_attn:
-                self.attn_map = img_probs.detach()              # save the map
+                self.attn_map = img_probs.detach()
             out = out + self.scale * img_out
+
 
         #original output projection (frozen)
         out = attn.to_out[0](out)

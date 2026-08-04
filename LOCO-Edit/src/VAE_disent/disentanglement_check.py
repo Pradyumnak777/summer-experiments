@@ -5,30 +5,56 @@ import os
 import torch
 from torch.utils.data import DataLoader
 from torchvision.utils import make_grid, save_image
-
+import matplotlib.pyplot as plt
 from model import twoChannelVAE
 from data_utils import twoChannelDataset
+import debugpy
+import random
+import numpy as np
 
-MODEL_PATH = "vae_checkpoints/beta_vae_beta=1/vae_epoch99.pt"
+torch.manual_seed(42)
+np.random.seed(42)
+random.seed(42)
+# debugpy.listen(("127.0.0.1", 5678)) #127.0.0.1, cz only local host can talk to the port
+# print("Waiting for debugger to attach...")
+# debugpy.wait_for_client()
+# print("Debugger attached! Running code...")
+
+SAVE_DIR = "vae_checkpoints_masked/beta_vae_beta=1_16"
+MODEL_PATH = f"{SAVE_DIR}/vae_epoch99.pt"
 LATENT_DIM = 16          # must match what MODEL_PATH was trained with
 DEVICE     = torch.device("cuda:9")
 
-CHA_DIR = "data/singlecell_chA_split/validation"
-CHB_DIR = "data/singlecell_chB_split/validation"
-OUT_DIR = "vae_checkpoints/beta_vae_beta=1_16/disentangle_checks_val"
-os.makedirs(OUT_DIR, exist_ok=True)
-
+CHA_DIR = "data/singlecell_chA_split/train"
+CHB_DIR = "data/singlecell_chB_split/train"
+idx = 10
+OUT_DIR = f"{SAVE_DIR}/latent_traversal_sample_{idx}"
 model = twoChannelVAE(latent_dim=LATENT_DIM).to(DEVICE)
 model.load_state_dict(torch.load(MODEL_PATH, map_location=DEVICE))
 model.eval()
 
-dataset = twoChannelDataset(CHA_DIR, CHB_DIR)
+dataset = twoChannelDataset(CHA_DIR, CHB_DIR, mask_dir="data/singlecell_mask")
 loader  = DataLoader(dataset, batch_size=64, shuffle=True)
 
 
 def active_units(model, loader):
     #per-dimension KL, averaged over a batch -> which latent dims are actually "on"
-    x = next(iter(loader)).to(DEVICE)
+    # idx = 1000
+    fixed_sample, _ = dataset[idx] #returns the mask too now
+    os.makedirs(OUT_DIR, exist_ok=True)
+    x = fixed_sample.unsqueeze(0).to(DEVICE)
+    '''
+    saving above img for comparison
+    '''
+    tensor_img = x.detach().cpu()
+    if tensor_img.ndim == 4:
+        tensor_img = tensor_img[0]
+        
+    for i in range(tensor_img.shape[0]):
+        channel_data = tensor_img[i].numpy()
+        plt.imsave(f"{OUT_DIR}/channel_{i}.png", channel_data, cmap="gray")
+    
+    
     with torch.no_grad():
         mu, logvar = model.encode(x)
         kl_per_dim = -0.5 * (1 + logvar - mu.pow(2) - logvar.exp())  # [B, latent_dim]
@@ -54,6 +80,17 @@ def save_traversal(images, dim, out_dir=OUT_DIR):
         grid = make_grid(images[:, ch:ch+1], nrow=images.shape[0])
         save_image(grid, f"{out_dir}/dim{dim}_{name}.png")
 
+def save_center_reconstruction(model, mu_anchor, out_dir=OUT_DIR):
+    """Decodes the unperturbed anchor latent vector and saves its channels."""
+    model.eval()
+    with torch.no_grad():
+        # Decode the anchor latent vector (add back batch dimension)
+        recon = model.decode(mu_anchor.unsqueeze(0))  # shape [1, C, H, W]
+        recon = (recon * 0.5 + 0.5).clamp(0, 1)       # normalize if needed
+        
+        # Save each channel of the center reconstruction
+        for ch, name in [(0, "chA"), (1, "chB")]:
+            save_image(recon[:, ch:ch+1], f"{out_dir}/center_recon_{name}.png")
 
 if __name__ == "__main__":
     kl_per_dim = active_units(model, loader)
@@ -61,7 +98,8 @@ if __name__ == "__main__":
     for i, kl in enumerate(kl_per_dim):
         print(f"  dim {i}: {kl.item():.4f}")
 
-    x_anchor = dataset[0].unsqueeze(0).to(DEVICE)
+    x_anchor, _ = dataset[idx]
+    x_anchor = x_anchor.unsqueeze(0).to(DEVICE)
     with torch.no_grad():
         mu_anchor, _ = model.encode(x_anchor)
     mu_anchor = mu_anchor.squeeze(0)  # [latent_dim]
@@ -70,3 +108,5 @@ if __name__ == "__main__":
     for dim in range(LATENT_DIM):
         images = traverse(model, mu_anchor, dim)  # values computed inside now
         save_traversal(images, dim)
+
+    save_center_reconstruction(model, mu_anchor)

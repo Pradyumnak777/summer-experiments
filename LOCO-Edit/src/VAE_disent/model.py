@@ -73,15 +73,30 @@ class twoChannelVAE(nn.Module):
         return x
     
     def forward(self, x):
+        '''
+        below for generral VAE
+        # '''
         mu, logvar = self.encode(x)
         z = self.reparametrize(mu, logvar)
         x_recon = self.decode(z)
         return x_recon, mu, logvar
+        
+        '''
+        below for autoencoder test
+        '''
+        # mu, logvar = self.encode(x)
+        # x_recon = self.decode(mu)
+        # return x_recon, mu, logvar
     
-    def loss(self, x, x_recon, mu, logvar, beta=4.0):
+    def loss(self, x, x_recon, mu, logvar, beta=4.0, mask=None):
         #shape is (Batch, 2, 128, 128)
         
-        recon_loss = nn.functional.mse_loss(x_recon, x, reduction='sum') #ts is MSE
+        if mask is not None:
+            se = (x_recon - x) ** 2               # [B, 2, H, W]
+            recon_loss = (se * mask).sum()
+        else:
+            recon_loss = nn.functional.mse_loss(x_recon, x, reduction='sum') #ts is MSE
+        
         kl_loss = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp())
         
         total_loss = recon_loss + (beta * kl_loss)

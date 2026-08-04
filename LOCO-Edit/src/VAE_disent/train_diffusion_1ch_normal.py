@@ -19,7 +19,7 @@ from diffusion_model import build_unet
 
 DEVICE      = torch.device("cuda:9")
 CH_DIR      = "data/singlecell_chB_split/train"   #training single channel
-SAVE_DIR    = "diffusion_checkpoints/ddpm_chB_128_no_preweights"
+SAVE_DIR    = "diffusion_checkpoints/ddpm_chB_128_no_preweights_masked"
 IMG_SIZE    = 128
 
 
@@ -158,7 +158,7 @@ for epoch in range(start_epoch, NUM_EPOCHS):
     model.train()
     tqdm.write(f"\n--- starting epoch {epoch}/{NUM_EPOCHS} ---")
 
-    for x in loader:
+    for x, _ in loader:
         x = x.to(DEVICE)
         noise = torch.randn_like(x)
         bsz   = x.shape[0]

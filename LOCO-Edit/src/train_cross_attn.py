@@ -28,14 +28,14 @@ SRC_CKPT = "diffusion_checkpoints/ddpm_chA_128/unet_ema_epoch45.pt"   #encoder  
 TGT_IDX  = 1     #chB is channel index 1 in the stacked [2,H,W] tensor
 SRC_IDX  = 0     #chA is channel index 0
 
-SAVE_DIR   = "cross_attn_checkpoints/AtoB"
+SAVE_DIR   = "cross_attn_checkpoints/AtoB_new_maskedchA"
 IMG_SIZE   = 128
 BATCH_SIZE = 32
 NUM_EPOCHS = 50
 LR         = 1e-4
 TOKEN_DIM  = 256
 STOP_BLOCK = 3       #tap chA encoder after down_blocks[3] -> 8x8 = 64 tokens
-TOKEN_DROP = 0.1     
+# TOKEN_DROP = 0.1     
 os.makedirs(SAVE_DIR, exist_ok=True)
 
 denoiser = build_unet(IMG_SIZE, channels=1).to(DEVICE)
@@ -59,7 +59,8 @@ print(f"trainable params: {sum(t.numel() for t in trainable)/1e6:.2f}M")
 
 scheduler = DDPMScheduler(num_train_timesteps=1000)
 
-dataset = twoChannelDataset(CHA_DIR, CHB_DIR)
+dataset = twoChannelDataset(CHA_DIR, CHB_DIR, mask_dir="data/singlecell_mask")
+
 loader  = DataLoader(dataset, batch_size=BATCH_SIZE, shuffle=True,
                      num_workers=4, drop_last=True)
 
@@ -90,19 +91,43 @@ def save_ckpt(tag):
     }, f"{SAVE_DIR}/adapter_ema_{tag}.pt")
     ema.restore(trainable)
 
+def set_token_mask(procs, mask):
+    for p in procs.values():
+        p.token_mask = mask
+
+def clear_token_mask(procs):
+    for p in procs.values():
+        p.token_mask = None
+
 for epoch in range(NUM_EPOCHS):
-    for x in loader:
+    for x, mask in loader:
         x = x.to(DEVICE)                          # [B, 2, H, W]
+        mask = mask.to(DEVICE) #[b, 1, h, w]
+
         src_img = x[:, SRC_IDX:SRC_IDX+1]         # chA, the conditioning channel
         tgt_img = x[:, TGT_IDX:TGT_IDX+1]         # chB, the channel we denoise
         B = x.shape[0]
+        
+        # src_img_masked = src_img * mask - (1 - mask) #cell kept, background -> black
+
 
         tokens = encoder(src_img)                 # [B, N, token_dim]
         #token dropout -> lets us do classifier-free guidance at inference
-        keep = (torch.rand(B, 1, 1, device=DEVICE) >= TOKEN_DROP)
-        tokens = tokens * keep
-        set_tokens(procs, tokens)
+        # keep = (torch.rand(B, 1, 1, device=DEVICE) >= TOKEN_DROP)
+        # tokens = tokens * keep
+        # set_tokens(procs, tokens)
+        '''
+        new token masking below
+        '''
+        # downsample cell mask to the 8x8 token grid; "keep" if ANY cell pixel falls in that patch
+        token_mask = F.adaptive_max_pool2d(mask, output_size=(8, 8))   # [B,1,8,8]
+        token_mask = (token_mask.flatten(1) > 0.5)                     # [B, 64] bool
 
+        # keep = (torch.rand(B, 1, 1, device=DEVICE))
+        # tokens = tokens * keep
+        set_tokens(procs, tokens)
+        set_token_mask(procs, token_mask)
+        
         noise = torch.randn_like(tgt_img)
         
         '''
@@ -118,7 +143,14 @@ for epoch in range(NUM_EPOCHS):
         
         noisy = scheduler.add_noise(tgt_img, noise, t)
         noise_pred = denoiser(noisy, t).sample
-        loss = F.mse_loss(noise_pred, noise)
+        
+        '''
+        trying a heuristic!!
+        '''
+        per_pix = F.mse_loss(noise_pred, noise, reduction="none")
+        loss    = (per_pix * mask).sum() / mask.sum().clamp_min(1.0)
+
+        # loss = F.mse_loss(noise_pred, noise)
 
         optimizer.zero_grad()
         loss.backward()
@@ -133,7 +165,7 @@ for epoch in range(NUM_EPOCHS):
         progress.set_postfix(epoch=epoch, loss=f"{loss.item():.4f}")
         progress.update(1)
 
-    if epoch % 5 == 0 or epoch == NUM_EPOCHS - 1:
+    if epoch % 10 == 0 or epoch == NUM_EPOCHS - 1:
         save_ckpt(f"epoch{epoch}")
         log_file.flush()
         tqdm.write(f"  [ckpt] saved adapter at epoch {epoch}")

@@ -14,23 +14,23 @@ from tqdm import tqdm
 from diffusers import DDPMScheduler
 from diffusers.optimization import get_cosine_schedule_with_warmup
 from diffusers.training_utils import EMAModel
-
+import re
 from diffusion_model import build_unet
 
 DEVICE      = torch.device("cuda:9")
-CH_DIR      = "data/singlecell_chA_split/train"   #training single channel
-SAVE_DIR    = "diffusion_checkpoints/ddpm_chA_128"
+CH_DIR      = "data/singlecell_chB_split/train"   #training single channel
+SAVE_DIR    = "diffusion_checkpoints/ddpm_chB_128_masked"
 IMG_SIZE    = 128
 
-PRETRAINED_MODEL = "diffusion_checkpoints/ddpm_2ch_128/unet_epoch80.pt"
+PRETRAINED_MODEL = "diffusion_checkpoints/ddpm_2ch_128_masked/unet_ema_epoch80.pt"
 #could swap to unet_ema_epoch80.pt instead, probably the better converged weights
 
-TARGET_CHANNEL = 0        #0 = chA, 1 = chB
+TARGET_CHANNEL = 1        #0 = chA, 1 = chB
 BATCH_SIZE     = 32
 NUM_EPOCHS     = 80        #warm start converges faster than the 200 the 2ch needed from scratch
 LR             = 5e-5      #lower than scratch LR since we're fine-tuning a good init
 NUM_TRAIN_TIMESTEPS = 1000
-SAVE_EVERY     = 5
+SAVE_EVERY     = 10
 PRINT_EVERY    = 200
 
 #L2-SP(?)- weights penalized furthey they stray from the pretrained ones?
@@ -62,24 +62,48 @@ def port_2ch_to_1ch(pretrained_path, target_channel, img_size):
 
 
 class singleChannelDataset(Dataset):
-    def __init__(self, ch_dir):
+    def __init__(self, ch_dir, mask_dir = None):
         super().__init__()
         self.files = sorted([f for f in Path(ch_dir).glob('*.png')])
+        
+        match = re.search(r'(ch[AB])', str(ch_dir))
+        if match:
+            self.channel = match.group(1)
+            print(self.channel)
+        else:
+            raise ValueError(f"Could not extract channel (chA/chB) from path: {ch_dir}")
+        
         self.transform = transforms.Compose([
             transforms.Resize((128, 128)),
             transforms.ToTensor(),
             transforms.Normalize(mean=[0.5], std=[0.5]),
+        ])
+        self.mask_dir = mask_dir
+        self.mask_transform = transforms.Compose([
+        transforms.Resize((128, 128),
+                          interpolation=transforms.InterpolationMode.NEAREST),
+        transforms.ToTensor(),
         ])
 
     def __len__(self):
         return len(self.files)
 
     def __getitem__(self, index):
-        img = Image.open(self.files[index]).convert('L')
-        return self.transform(img)
+        img_path = self.files[index]
+        img = Image.open(img_path).convert('L')
+        img = self.transform(img)
+        
+        #eg: "sub3_cell7_f012_chA.png" -> "sub3_cell7_f012" -> "sub3_cell7_f012_mask.png"
+        base = img_path.name[:-len(f"_{self.channel}.png")]
+        img_mask = Image.open(f"{self.mask_dir}/{base}_mask.png").convert('L')
+        mask = self.mask_transform(img_mask)
+        
+        x_masked = torch.where(mask.bool(), img , torch.full_like(img, -1.0)) #applies mask to the image   
+        
+        return x_masked, mask
 
 
-dataset = singleChannelDataset(CH_DIR)
+dataset = singleChannelDataset(CH_DIR, mask_dir="data/singlecell_mask")
 loader  = DataLoader(dataset, batch_size=BATCH_SIZE, shuffle=True,
                      num_workers=4, drop_last=True)
 
@@ -141,7 +165,7 @@ for epoch in range(NUM_EPOCHS):
     model.train()
     tqdm.write(f"\n--- starting epoch {epoch}/{NUM_EPOCHS} ---")
 
-    for x in loader:
+    for x, _ in loader:
         x = x.to(DEVICE)
         noise = torch.randn_like(x)
         bsz   = x.shape[0]

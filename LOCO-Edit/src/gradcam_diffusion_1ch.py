@@ -20,7 +20,7 @@ feat_cache = {}
 grad_cache = {}
 
 #config stuff
-CKPT     = "diffusion_checkpoints/ddpm_2ch_128/unet_ema_epoch80.pt"
+CKPT     = "diffusion_checkpoints/ddpm_2ch_128_masked/unet_ema_epoch80.pt"
 IMG_SIZE = 128
 K_FULL   = 5          # top-k directions from Vd to sweep through
 K_BLOCK  = 5          # top-k for each channel block

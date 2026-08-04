@@ -16,19 +16,19 @@ CHA_DIR = "data/singlecell_chA_split/train"
 CHB_DIR = "data/singlecell_chB_split/train"
 
 DEVICE      = torch.device("cuda:9")
-BATCH_SIZE  = 64
+BATCH_SIZE  = 128
 NUM_EPOCHS  = 100
 LR          = 3e-4
-BETA        = 1
+BETA        = 0
 LATENT_DIM  = 16
 
-SAVE_DIR = f"vae_checkpoints/beta_vae_beta={BETA}_{LATENT_DIM}"
+SAVE_DIR = f"vae_autoenc_checkpoints_masked/beta_vae_beta={BETA}_{LATENT_DIM}"
 os.makedirs(SAVE_DIR, exist_ok=True)
 os.makedirs(f"{SAVE_DIR}/recon_previews", exist_ok=True)
 
 
 
-dataset = twoChannelDataset(CHA_DIR, CHB_DIR)
+dataset = twoChannelDataset(CHA_DIR, CHB_DIR, mask_dir="data/singlecell_mask")
 
 '''
 below for subset test
@@ -60,10 +60,11 @@ def save_recon_preview(x, x_recon, epoch):
 global_step = 0
 for epoch in range(NUM_EPOCHS):
     model.train()
-    for step, x in enumerate(loader):
+    for step, (x,mask) in enumerate(loader):
         x = x.to(DEVICE)
 
         x_recon, mu, logvar = model(x)
+        mask = mask.to(DEVICE)
         total_loss, recon_loss, kl_loss = model.loss(x, x_recon, mu, logvar, beta=BETA)
 
         optimizer.zero_grad()
@@ -82,8 +83,12 @@ for epoch in range(NUM_EPOCHS):
     if epoch == 0 or (epoch + 1) % 10 == 0:
         model.eval()
         with torch.no_grad():
-            x_check = next(iter(loader)).to(DEVICE)
-            x_recon_check, _, _ = model(x_check)
+            x_check, _ = next(iter(loader))
+            x_check = x_check.to(DEVICE)
+
+            mu_check, _ = model.encode(x_check)
+            x_recon_check = model.decode(mu_check)
+            
         save_recon_preview(x_check, x_recon_check, epoch)
         torch.save(model.state_dict(), f"{SAVE_DIR}/vae_epoch{epoch}.pt")
 

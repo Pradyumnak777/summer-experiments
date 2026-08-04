@@ -16,20 +16,20 @@ from diffusers.training_utils import EMAModel
 from data_utils import twoChannelDataset
 from diffusion_model import build_unet
 
-DEVICE      = torch.device("cuda:0")
+DEVICE      = torch.device("cuda:9")
 CHA_DIR     = "data/singlecell_chA_split/train"
 CHB_DIR     = "data/singlecell_chB_split/train"
-SAVE_DIR    = "diffusion_checkpoints/ddpm_2ch_128"
+SAVE_DIR    = "diffusion_checkpoints/ddpm_2ch_128_masked"
 IMG_SIZE    = 128
-BATCH_SIZE  = 16
-NUM_EPOCHS  = 200
+BATCH_SIZE  = 32
+NUM_EPOCHS  = 100
 LR          = 1e-4
 NUM_TRAIN_TIMESTEPS = 1000
-SAVE_EVERY  = 5          # epochs between checkpoints + sample previews
+SAVE_EVERY  = 10          # epochs between checkpoints + sample previews
 PRINT_EVERY = 200         # steps between logged print lines
 os.makedirs(f"{SAVE_DIR}/samples", exist_ok=True)
 
-dataset = twoChannelDataset(CHA_DIR, CHB_DIR)
+dataset = twoChannelDataset(CHA_DIR, CHB_DIR, mask_dir="data/singlecell_mask")
 loader  = DataLoader(dataset, batch_size=BATCH_SIZE, shuffle=True,
                      num_workers=4, drop_last=True)
 
@@ -95,7 +95,7 @@ for epoch in range(NUM_EPOCHS):
     model.train()
     tqdm.write(f"\n--- starting epoch {epoch}/{NUM_EPOCHS} ---")
 
-    for x in loader:
+    for x,_ in loader:
         x = x.to(DEVICE)                              # [B, 2, 128, 128] in [-1,1]
         noise = torch.randn_like(x)
         bsz   = x.shape[0]
