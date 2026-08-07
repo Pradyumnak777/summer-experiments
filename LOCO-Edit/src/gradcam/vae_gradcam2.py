@@ -21,7 +21,8 @@ SET = "train"
 CHA_DIR = f"data/singlecell_chA_split/{SET}"
 CHB_DIR = f"data/singlecell_chB_split/{SET}"
 idx = 10
-SAVE_DIR = f"gradcam/beta_vae_beta=1_16/{SET}/sample_{idx}"
+SAVE_DIR = f"gradcam/v2/beta_vae_beta=1_16/{SET}/sample_{idx}"
+LATENT_CODES = 16
 os.makedirs(SAVE_DIR, exist_ok=True)
 
 dataset = twoChannelDataset(CHA_DIR, CHB_DIR, mask_dir="data/singlecell_mask")
@@ -56,48 +57,45 @@ class GradCAMVAE:
         
         #foward pass thru the model
         mu, logvar = self.model.encode(input_tensor)
-        z = self.model.reparametrize(mu, logvar)
+        # z = self.model.reparametrize(mu, logvar)
         
         #
         self.model.zero_grad()
-        z[:, latent_idx].sum().backward()  # this is the chosen SCALAR to backprop!
+        mu[:, latent_idx].sum().backward()     # this is the chosen SCALAR to backprop!
         
         # Compute GradCAM
-        grads = self.gradients[0]  # (C, H, W)
-        acts = self.activations[0]  # (C, H, W)
+        grads = self.gradients[0] #[32, 64, 64]
+        weights = grads.mean(dim=(1, 2)) #32 filters
+        W = self.model.conv1.weight
         
-        # Weights: average gradient across spatial dims
-        weights = grads.mean(dim=(1, 2))  # (C,)
-        
-        # Weighted activation sum
-        cam = (weights.unsqueeze(-1).unsqueeze(-1) * acts).sum(dim=0)  # (H, W)
-        
-        # Normalize to [0, 1]
-        cam = cam - cam.min()
-        cam = cam / (cam.max() + 1e-8)
-        
-        cam = cam.unsqueeze(0).unsqueeze(0)                       # (1, 1, 8, 8)
-        cam = F.interpolate(cam, size=(128, 128), mode='bilinear', align_corners=False)
-        cam = cam.squeeze().detach().cpu().numpy()                # (128, 128)
+        with torch.no_grad():
+            term_chA = F.conv2d(input_tensor[:, 0:1], W[:, 0:1], bias=None, stride=2, padding=1)[0]  # [32,64,64]
+            term_chB = F.conv2d(input_tensor[:, 1:2], W[:, 1:2], bias=None, stride=2, padding=1)[0]
 
-        return cam
+            cam_chA = (weights[:, None, None] * term_chA).sum(dim=0)   # [64,64]
+            cam_chB = (weights[:, None, None] * term_chB).sum(dim=0)   # [64,64]
+        
+        return cam_chA, cam_chB
 
     
-def save_overlay(raw_img_tensor, cam, save_path, title):
-    
-    # un-normalize back to [0, 1] for display
+def save_overlay(raw_img_tensor, cam, save_path, title, scale):
     img = (raw_img_tensor.squeeze().cpu().numpy() * 0.5) + 0.5
     img = np.clip(img, 0, 1)
 
     plt.figure(figsize=(5, 5))
     plt.imshow(img, cmap='gray')
-    plt.imshow(cam, cmap='jet', alpha=0.45)  # overlay heatmap with transparency
+    plt.imshow(cam, cmap='jet', vmin=-scale, vmax=scale, alpha=0.45)  # shared, signed
     plt.title(title)
     plt.axis('off')
     plt.colorbar(fraction=0.046, pad=0.04)
     plt.savefig(save_path, bbox_inches='tight', dpi=150)
     plt.close()
-    print(f"saved to {save_path}")
+    
+
+def resize_and_numpy(cam, size=128):
+    cam = cam.unsqueeze(0).unsqueeze(0)                    # [1,1,64,64]
+    cam = F.interpolate(cam, size=(size, size), mode='bilinear', align_corners=False)
+    return cam.squeeze().detach().cpu().numpy()             # [128,128]
 
 
 if __name__ == "__main__":
@@ -115,16 +113,23 @@ if __name__ == "__main__":
     # chB_tensor = transform(imgB)  # (1, 128, 128)
     # input_tensor = torch.cat([chA_tensor, chB_tensor], dim=0).unsqueeze(0).to(DEVICE)  # (1, 2, 128, 128)
 
-    gradcam = GradCAMVAE(model, model.conv4)
-
-    latent_idx = 2
+    gradcam = GradCAMVAE(model, model.conv1)
     fixed_sample, _ = dataset[idx]
     #separate this into 2 channels
     chA_tensor = fixed_sample[0]  # Shape: [H, W]
     chB_tensor = fixed_sample[1]
     
-    input_tensor = fixed_sample.unsqueeze(0).to(DEVICE) #[1, 2, H, W]
-    cam = gradcam(input_tensor, latent_idx=latent_idx)
+    for i in range(LATENT_CODES):
+        latent_idx = i
+        input_tensor = fixed_sample.unsqueeze(0).to(DEVICE) #[1, 2, H, W]
+        camA, camB = gradcam(input_tensor, latent_idx=latent_idx)
+        
+        camA_np = resize_and_numpy(camA)
+        camB_np = resize_and_numpy(camB)
+        scale = max(np.abs(camA_np).max(), np.abs(camB_np).max(), 1e-8)
 
-    save_overlay(chA_tensor, cam, f"{SAVE_DIR}/latent_{latent_idx}_chA.png", f"chA, latent {latent_idx}")
-    save_overlay(chB_tensor, cam, f"{SAVE_DIR}/latent_{latent_idx}_chB.png", f"chB, latent {latent_idx}")
+        save_overlay(chA_tensor, camA_np, f"{SAVE_DIR}/latent_{latent_idx}_chA.png", f"chA, latent {latent_idx}", scale)
+        save_overlay(chB_tensor, camB_np, f"{SAVE_DIR}/latent_{latent_idx}_chB.png", f"chB, latent {latent_idx}", scale)
+
+    
+    

@@ -90,7 +90,7 @@ class CrossAttnProcessor(nn.Module):
 
         query = attn.to_q(hidden_states)
 
-        #---- original self-attention (frozen) ----
+        #original self-attention (frozen)
         key   = attn.to_k(hidden_states)
         value = attn.to_v(hidden_states)
         q = attn.head_to_batch_dim(query)
@@ -100,7 +100,7 @@ class CrossAttnProcessor(nn.Module):
         out = torch.bmm(self_probs, v)
         out = attn.batch_to_head_dim(out)
 
-        #---- added cross-attention to the source tokens (trainable) ----
+        #added cross-attention to the source tokens (trainable)
         if self.tokens is not None:
             k_img = attn.head_to_batch_dim(self.to_k_img(self.tokens))
             v_img = attn.head_to_batch_dim(self.to_v_img(self.tokens))

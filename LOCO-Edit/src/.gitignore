@@ -24,3 +24,4 @@ diffusion_1ch_comparisons/
 diffusion_1ch_recon_comparisons/
 vae_autoenc_checkpoints_masked/
 vae_checkpoints_masked/
+vae_autoenc_checkpoints_masked_2/

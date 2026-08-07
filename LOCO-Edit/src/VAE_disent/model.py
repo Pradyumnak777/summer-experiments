@@ -88,15 +88,24 @@ class twoChannelVAE(nn.Module):
         # x_recon = self.decode(mu)
         # return x_recon, mu, logvar
     
-    def loss(self, x, x_recon, mu, logvar, beta=4.0, mask=None):
+    def loss(self, x, x_recon, mu, logvar, beta=4.0, mask=None, l1_weight=0.0):
         #shape is (Batch, 2, 128, 128)
         
         if mask is not None:
-            se = (x_recon - x) ** 2               # [B, 2, H, W]
-            recon_loss = (se * mask).sum()
+            se = (x_recon - x) ** 2 # [B, 2, H, W]
+            ae = (x_recon - x).abs()
+            mse_loss = (se * mask).sum()
+            l1_loss  = (ae * mask).sum()
+            # l1_loss  = ae.sum()
+            # mse_loss = se.sum()
+
+            
         else:
-            recon_loss = nn.functional.mse_loss(x_recon, x, reduction='sum') #ts is MSE
-        
+            # recon_loss = nn.functional.mse_loss(x_recon, x, reduction='sum') #ts is MSE
+            mse_loss = nn.functional.mse_loss(x_recon, x, reduction='sum')
+            l1_loss  = nn.functional.l1_loss(x_recon, x, reduction='sum')
+
+        recon_loss = (1 - l1_weight) * mse_loss + l1_weight * l1_loss
         kl_loss = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp())
         
         total_loss = recon_loss + (beta * kl_loss)

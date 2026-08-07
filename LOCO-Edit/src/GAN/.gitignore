@@ -10,3 +10,4 @@ stylegan2-ada-pytorch/
 gan_inversion_results/
 gan_latent_traversal_inverted_w/
 gan_pca_results_inverted_w/
+data_npy_masked/

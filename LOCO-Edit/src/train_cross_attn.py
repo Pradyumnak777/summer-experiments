@@ -23,12 +23,12 @@ DEVICE   = torch.device("cuda:9")
 CHA_DIR  = "data/singlecell_chA_split/train"
 CHB_DIR  = "data/singlecell_chB_split/train"
 
-TGT_CKPT = "diffusion_checkpoints/ddpm_chB_128/unet_ema_epoch45.pt"   #denoiser (chB)
-SRC_CKPT = "diffusion_checkpoints/ddpm_chA_128/unet_ema_epoch45.pt"   #encoder  (chA)
+TGT_CKPT = "diffusion_checkpoints/ddpm_chB_128_masked/unet_ema_epoch40.pt"   #denoiser (chB)
+SRC_CKPT = "diffusion_checkpoints/ddpm_chA_128_masked/unet_ema_epoch40.pt"   #encoder  (chA)
 TGT_IDX  = 1     #chB is channel index 1 in the stacked [2,H,W] tensor
 SRC_IDX  = 0     #chA is channel index 0
 
-SAVE_DIR   = "cross_attn_checkpoints/AtoB_new_maskedchA"
+SAVE_DIR   = "cross_attn_checkpoints/AtoB_v2"
 IMG_SIZE   = 128
 BATCH_SIZE = 32
 NUM_EPOCHS = 50
@@ -147,10 +147,10 @@ for epoch in range(NUM_EPOCHS):
         '''
         trying a heuristic!!
         '''
-        per_pix = F.mse_loss(noise_pred, noise, reduction="none")
-        loss    = (per_pix * mask).sum() / mask.sum().clamp_min(1.0)
+        # per_pix = F.mse_loss(noise_pred, noise, reduction="none")
+        # loss    = (per_pix * mask).sum() / mask.sum().clamp_min(1.0)
 
-        # loss = F.mse_loss(noise_pred, noise)
+        loss = F.mse_loss(noise_pred, noise)
 
         optimizer.zero_grad()
         loss.backward()

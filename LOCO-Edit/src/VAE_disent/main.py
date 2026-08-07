@@ -22,7 +22,7 @@ LR          = 3e-4
 BETA        = 0
 LATENT_DIM  = 16
 
-SAVE_DIR = f"vae_autoenc_checkpoints_masked/beta_vae_beta={BETA}_{LATENT_DIM}"
+SAVE_DIR = f"vae_autoenc_checkpoints_masked_2/beta_vae_beta={BETA}_{LATENT_DIM}"
 os.makedirs(SAVE_DIR, exist_ok=True)
 os.makedirs(f"{SAVE_DIR}/recon_previews", exist_ok=True)
 
@@ -65,7 +65,7 @@ for epoch in range(NUM_EPOCHS):
 
         x_recon, mu, logvar = model(x)
         mask = mask.to(DEVICE)
-        total_loss, recon_loss, kl_loss = model.loss(x, x_recon, mu, logvar, beta=BETA)
+        total_loss, recon_loss, kl_loss = model.loss(x, x_recon, mu, logvar, beta=BETA, l1_weight=0.6)
 
         optimizer.zero_grad()
         total_loss.backward()

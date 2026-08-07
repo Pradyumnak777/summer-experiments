@@ -6,7 +6,7 @@ import matplotlib.cm as cm
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 from diffusers import DDPMScheduler
-
+import torch.nn.functional as F
 from VAE_disent.diffusion_model import build_unet
 from VAE_disent.data_utils import twoChannelDataset
 from cross_attn_modules import ChannelEncoder, install_cross_attn, set_tokens, set_store_attn
@@ -22,9 +22,9 @@ SET = "train"
 CHA_DIR  = f"data/singlecell_chA_split/{SET}"
 CHB_DIR  = f"data/singlecell_chB_split/{SET}"
 
-TGT_CKPT   = "diffusion_checkpoints/ddpm_chB_128/unet_ema_epoch45.pt"
-SRC_CKPT   = "diffusion_checkpoints/ddpm_chA_128/unet_ema_epoch45.pt"
-ADAPTER    = "cross_attn_checkpoints/AtoB_new_maskedchA/adapter_ema_epoch30.pt"
+TGT_CKPT   = "diffusion_checkpoints/ddpm_chB_128_masked/unet_ema_epoch40.pt"
+SRC_CKPT   = "diffusion_checkpoints/ddpm_chA_128_masked/unet_ema_epoch40.pt"
+ADAPTER    = "cross_attn_checkpoints/AtoB_v2/adapter_ema_epoch49.pt"
 # ADAPTER    = "cross_attn_checkpoints/AtoB/adapter_ema_epoch20.pt"
 
 TGT_IDX, SRC_IDX = 1, 0
@@ -32,11 +32,11 @@ TGT_IDX, SRC_IDX = 1, 0
 IMG_SIZE            = 128
 TOKEN_DIM           = 256
 STOP_BLOCK          = 3
-START_T             = 600   
+START_T             = 400   
 NUM_INFERENCE_STEPS = 1000  
-SAMPLE_INDICES = [7]   #dataset indices to run
+SAMPLE_INDICES = [200]   #dataset indices to run
 SEED           = 0
-OUT_DIR        = f"cross_attn/AtoB_queryview/{SET}/attn_maps_real_noised_startT{START_T}"
+OUT_DIR        = f"cross_attn/AtoB_v2/{SET}/attn_maps_real_noised_startT_{START_T}"
 os.makedirs(OUT_DIR, exist_ok=True)
 torch.manual_seed(SEED)
 
@@ -60,17 +60,24 @@ for name, p in procs.items():
     p.load_state_dict(state["procs"][name])
 
 scheduler = DDPMScheduler(num_train_timesteps=1000)
-dataset = twoChannelDataset(CHA_DIR, CHB_DIR)
+dataset = twoChannelDataset(CHA_DIR, CHB_DIR, mask_dir = "data/singlecell_mask")
 
 denoiser.eval(); encoder.eval()
 
 
 @torch.no_grad()
-def generate_and_collect(src_img, tgt_img):
+def generate_and_collect(src_img, tgt_img, mask):
     tokens = encoder(src_img)
     set_tokens(procs, tokens)
     B, N = tokens.shape[0], tokens.shape[1]
     src_side = int(math.sqrt(N))
+    
+    #added for masking
+    token_mask = F.adaptive_max_pool2d(mask, output_size=(src_side, src_side))
+    token_mask = (token_mask.flatten(1) > 0.5)
+    for p in procs.values():
+        p.token_mask = token_mask
+
 
     scheduler.set_timesteps(NUM_INFERENCE_STEPS)
     timesteps = scheduler.timesteps[scheduler.timesteps <= START_T]
@@ -205,11 +212,14 @@ def save_sample(sample_dir, chA, chB_real, chB_gen, agg, per_query, src_side, tg
 
 
 for i in SAMPLE_INDICES:
-    x = dataset[i].unsqueeze(0).to(DEVICE)            
+    x, mask = dataset[i]
+    x = x.unsqueeze(0).to(DEVICE) 
+    mask = mask.unsqueeze(0).to(DEVICE)
+      
     src_img = x[:, SRC_IDX:SRC_IDX+1]
     tgt_img = x[:, TGT_IDX:TGT_IDX+1]
 
-    recon, agg, per_query, src_side, tgt_side = generate_and_collect(src_img, tgt_img)
+    recon, agg, per_query, src_side, tgt_side = generate_and_collect(src_img, tgt_img, mask)
     chA = to_img(src_img)
     chB_real = to_img(tgt_img)
     chB_gen = to_img(recon)

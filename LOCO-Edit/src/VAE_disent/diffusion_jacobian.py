@@ -12,19 +12,21 @@ import matplotlib.pyplot as plt
 
 
 DEVICE   = torch.device("cuda:9")
-CKPT     = "diffusion_checkpoints/ddpm_2ch_128/unet_ema_epoch80.pt"
+CKPT     = "diffusion_checkpoints/ddpm_2ch_128_masked/unet_ema_epoch80.pt"
 CHA_DIR  = "data/singlecell_chA_split/train"
 CHB_DIR  = "data/singlecell_chB_split/train"
-OUT_DIR  = "diffusion_checkpoints/ddpm_2ch_128/jacobian_epoch80"
+OUT_DIR  = "diffusion_checkpoints/ddpm_2ch_128_masked/jacobian_epoch80_2"
 IMG_SIZE = 128
 EDIT_T   = 300        #at what timestep to perform PMP/tweedies formula
 ANCHOR   = 1          #sum frame to anchor on
 K_FULL   = 5          # top-k directions for the full SVD
 K_BLOCK  = 5          # top-k for each channel block
 N_ITER   = 5        #similar to locoedt(?)
-EDIT_SCALE = 15.0     # sweep range for alpha (unit directions need a large multiplier - c.f.
+EDIT_SCALE = 10.0     # sweep range for alpha (unit directions need a large multiplier - c.f.
 N_STEPS  = 7           # images per traversal strip (odd number -> exact center = alpha=0)
 SEED     = 0           # reproducibility: fixes both x_t's noise and the random SVD init
+
+DENOISE_STEPS = 50
 os.makedirs(OUT_DIR, exist_ok=True)
 torch.manual_seed(SEED)
 
@@ -130,8 +132,10 @@ def save_direction_image(v_block, tag):
 def save_edit_traversal(x_t, v_full, tag, edit_scale=EDIT_SCALE, n_steps=N_STEPS):
     values = torch.linspace(-edit_scale, edit_scale, n_steps, device=DEVICE)
     x_batch = x_t + values.view(n_steps, 1, 1, 1) * v_full        # [n_steps, 2, H, W]
-    x0_batch = get_x0(x_batch, EDIT_T)                             # [n_steps, 2, H, W]
-
+    # x0_batch = get_x0(x_batch, EDIT_T)                             # [n_steps, 2, H, W]
+    x0_batch = ddim_denoise(x_batch, EDIT_T)                       
+    
+    
     imgs = (x0_batch * 0.5 + 0.5).clamp(0, 1)
     for ch, name in [(0, "chA"), (1, "chB")]:
         grid = make_grid(imgs[:, ch:ch+1], nrow=n_steps)
@@ -154,10 +158,34 @@ def save_original_vs_recon(x0_real, x0_hat_center):
     print(f"  saved -> {OUT_DIR}/anchor_recon_chA.png, anchor_recon_chB.png (left=original, right=recon)")
 
 
+#one deterministic ddim reverse step, eta=0, from t_int down to t_prev_int
+def ddim_step(x_t, t_int, t_prev_int):
+    t = torch.full((x_t.shape[0],), t_int, device=x_t.device, dtype=torch.long)
+    eps = model(x_t, t).sample
+    ab_t = alphas_cumprod[t_int]
+    #treat t_prev<=0 as fully clean, matches how tweedie's x0 estimate is defined
+    ab_prev = alphas_cumprod[t_prev_int] if t_prev_int > 0 else torch.tensor(1.0, device=x_t.device)
+    x0_pred = (x_t - (1 - ab_t).sqrt() * eps) / ab_t.sqrt()
+    return ab_prev.sqrt() * x0_pred + (1 - ab_prev).sqrt() * eps
+
+
+#runs the full reverse trajectory from t_start down to 0, this is what actually gets "presented"
+@torch.no_grad()
+def ddim_denoise(x_t, t_start, denoise_steps=DENOISE_STEPS):
+    timesteps = torch.linspace(t_start, 0, denoise_steps + 1).round().long().tolist()
+    x = x_t
+    for i in range(len(timesteps) - 1):
+        t_cur, t_next = timesteps[i], timesteps[i + 1]
+        if t_cur == t_next:
+            continue
+        x = ddim_step(x, t_cur, t_next)
+    return x
+
 # main fucntion
 
-dataset = twoChannelDataset(CHA_DIR, CHB_DIR) #loading data
-x0_real = dataset[ANCHOR].unsqueeze(0).to(DEVICE) #actual img
+dataset = twoChannelDataset(CHA_DIR, CHB_DIR, mask_dir="data/singlecell_mask") #loading data
+x0_real, _ = dataset[ANCHOR] #actual img
+x0_real = x0_real.unsqueeze(0).to(DEVICE)
 noise   = torch.randn_like(x0_real)
 x_t = scheduler.add_noise(x0_real, noise, torch.tensor([EDIT_T], device=DEVICE)) #image noised to timestep t
 

@@ -24,11 +24,11 @@ SAVE_DIR = "vae_checkpoints_masked/beta_vae_beta=1_16"
 MODEL_PATH = f"{SAVE_DIR}/vae_epoch99.pt"
 LATENT_DIM = 16          # must match what MODEL_PATH was trained with
 DEVICE     = torch.device("cuda:9")
-
-CHA_DIR = "data/singlecell_chA_split/train"
-CHB_DIR = "data/singlecell_chB_split/train"
+SET = "validation"
+CHA_DIR = f"data/singlecell_chA_split/{SET}"
+CHB_DIR = f"data/singlecell_chB_split/{SET}"
 idx = 10
-OUT_DIR = f"{SAVE_DIR}/latent_traversal_sample_{idx}"
+OUT_DIR = f"{SAVE_DIR}/{SET}/latent_traversal_sample_{idx}"
 model = twoChannelVAE(latent_dim=LATENT_DIM).to(DEVICE)
 model.load_state_dict(torch.load(MODEL_PATH, map_location=DEVICE))
 model.eval()

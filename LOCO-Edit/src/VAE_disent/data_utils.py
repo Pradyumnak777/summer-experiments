@@ -23,6 +23,23 @@ class twoChannelDataset(Dataset):
                           interpolation=transforms.InterpolationMode.NEAREST),
         transforms.ToTensor(),
         ])
+        
+        #some masks are full empty
+        if self.mask_dir is not None:
+            keep = []
+            for i, imgA_path in enumerate(self.chA_files):
+                base = imgA_path.name[:-len("_chA.png")]
+                mask_path = Path(self.mask_dir) / f"{base}_mask.png"
+                m = self.mask_transform(Image.open(mask_path).convert('L'))
+                if m.sum() > 0:
+                    keep.append(i)
+            dropped = len(self.chA_files) - len(keep)
+            if dropped:
+                print(f"[twoChannelDataset] dropping {dropped}/{len(self.chA_files)} "
+                      f"samples with empty masks")
+            self.chA_files = [self.chA_files[i] for i in keep]
+            self.chB_files = [self.chB_files[i] for i in keep]
+
 
                 
     def __len__(self):
