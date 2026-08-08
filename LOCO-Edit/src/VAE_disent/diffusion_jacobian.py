@@ -15,18 +15,22 @@ DEVICE   = torch.device("cuda:9")
 CKPT     = "diffusion_checkpoints/ddpm_2ch_128_masked/unet_ema_epoch80.pt"
 CHA_DIR  = "data/singlecell_chA_split/train"
 CHB_DIR  = "data/singlecell_chB_split/train"
-OUT_DIR  = "diffusion_checkpoints/ddpm_2ch_128_masked/jacobian_epoch80_2"
 IMG_SIZE = 128
-EDIT_T   = 300        #at what timestep to perform PMP/tweedies formula
+EDIT_T   = 400        #at what timestep to perform PMP/tweedies formula
 ANCHOR   = 1          #sum frame to anchor on
-K_FULL   = 5          # top-k directions for the full SVD
-K_BLOCK  = 5          # top-k for each channel block
-N_ITER   = 5        #similar to locoedt(?)
+K_FULL   = 10          # top-k directions for the full SVD
+# K_BLOCK  = 5          # top-k for each channel block
+# N_ITER   = 5        #similar to locoedt(?)
 EDIT_SCALE = 10.0     # sweep range for alpha (unit directions need a large multiplier - c.f.
 N_STEPS  = 7           # images per traversal strip (odd number -> exact center = alpha=0)
 SEED     = 0           # reproducibility: fixes both x_t's noise and the random SVD init
+MIN_ITER = 10
+MAX_ITER = 100
 
-DENOISE_STEPS = 50
+OUT_DIR  = f"diffusion_checkpoints/ddpm_2ch_128_masked/{EDIT_T}/jacobian_epoch80"
+
+
+DENOISE_STEPS = 25
 os.makedirs(OUT_DIR, exist_ok=True)
 torch.manual_seed(SEED)
 
@@ -74,17 +78,27 @@ def build_linear_ops(x_t, t_int):
     return jvp, vjp
 
 
-# ---- randomized top-k SVD of a linear operator given as flat jvp/vjp ----
-def jacobian_svd(jvp_flat, vjp_flat, d_in, d_out, k, n_iter):
+#randomized top-k SVD of a linear operator given as flat jvp/vjp ----
+def jacobian_svd(jvp_flat, vjp_flat, d_in, d_out, k, min_iter=10, max_iter=100, tol=1e-3):
     V = torch.linalg.qr(torch.randn(d_in, k, device=DEVICE))[0]
-    for _ in range(n_iter):
-        Y = torch.stack([jvp_flat(V[:, i]) for i in range(k)], dim=1)
+    for i in range(max_iter):
+
+        V_prev = V.detach().clone()
+
+        Y = torch.stack([jvp_flat(V[:, j]) for j in range(k)], dim=1)
         Y = torch.linalg.qr(Y)[0]
-        Z = torch.stack([vjp_flat(Y[:, i]) for i in range(k)], dim=1)
+        Z = torch.stack([vjp_flat(Y[:, j]) for j in range(k)], dim=1)
         V = torch.linalg.qr(Z)[0]
-    Y = torch.stack([jvp_flat(V[:, i]) for i in range(k)], dim=1)
+
+        conv = torch.dist(V_prev, V).item()
+        print(f"jacobian_svd: iter {i} convergence dist = {conv:.4e}")
+        if i >= min_iter and conv < tol:
+            print(f"jacobian_svd: converged after {i+1} iterations (dist={conv:.2e})")
+            break
+
+    Y = torch.stack([jvp_flat(V[:, j]) for j in range(k)], dim=1)
     Q = torch.linalg.qr(Y)[0]
-    Bt = torch.stack([vjp_flat(Q[:, i]) for i in range(k)], dim=1)
+    Bt = torch.stack([vjp_flat(Q[:, j]) for j in range(k)], dim=1)
     Ub, S, Vh = torch.linalg.svd(Bt.T, full_matrices=False)
     U = Q @ Ub
     return U, S, Vh.T
@@ -97,7 +111,7 @@ def make_full_ops(jvp, vjp):
     return jvp_flat, vjp_flat, D, D
 
 
-def make_block_ops(jvp, vjp, in_ch, out_ch):
+def make_block_ops(jvp, vjp, in_ch, out_ch): #flattens only that specific channel's half!!
     D = H * W
     def jvp_flat(v_in):
         v = torch.zeros(SHAPE, device=DEVICE)
@@ -203,8 +217,8 @@ jvp, vjp = build_linear_ops(x_t, EDIT_T)
 below block perform jacobian FULL (both channels- 32,768 data)
 And then perform SVD to get top directions, along which x-t will be nudged to see the edit/disentanglement
 '''
-jf, vf, din, dout = make_full_ops(jvp, vjp)
-U, S, Vd = jacobian_svd(jf, vf, din, dout, K_FULL, N_ITER)
+jf, vf, din, dout = make_full_ops(jvp, vjp) #flattened jvp and vjp basically
+U, S, Vd = jacobian_svd(jf, vf, din, dout, K_FULL, MIN_ITER, MAX_ITER) #U- output space(X_0) dirs. Vd- input space(X_t) dirs. S- singular values
 
 os.makedirs(f"{OUT_DIR}/data_files", exist_ok=True)
 torch.save((x_t.detach().cpu(), EDIT_T), f"{OUT_DIR}/data_files/x_t.pt") #this is the noise, to be used in gradCAM
@@ -219,29 +233,32 @@ for i in range(K_FULL):
     fracA = eA / (eA + eB + 1e-8)
     verdict = "A-specific" if fracA > 0.8 else "B-specific" if fracA < 0.2 else "SHARED/coupled"
     print(f" {i:2d} | {S[i].item():8.3f} |  {fracA:5.2f}   |  {1-fracA:5.2f}   | {verdict}")
-    v_i = Vd[:, i].view(1, 2, H, W)
+    v_i = Vd[:, i].view(1, 2, H, W) #the input directions, this is multiplied with the anchors?
     save_edit_traversal(x_t, v_i, f"full_dir{i}")
 
 
+    '''
+    #NOTE: below for channelwise!
+    '''
 
-print("\nbelow are J_AB, J_BA, etc")
-print("block | " + " | ".join(f"s{j}" for j in range(K_BLOCK)))
-blocks = {"J_AA": (0, 0), "J_BB": (1, 1), "J_BA (A->B)": (0, 1), "J_AB (B->A)": (1, 0)}
-cross_blocks = {"J_BA (A->B)", "J_AB (B->A)"}   # off-diagonal only -> where the real coupling lives
+# print("\nbelow are J_AB, J_BA, etc")
+# print("block | " + " | ".join(f"s{j}" for j in range(K_BLOCK)))
+# blocks = {"J_AA": (0, 0), "J_BB": (1, 1), "J_BA (A->B)": (0, 1), "J_AB (B->A)": (1, 0)}
+# cross_blocks = {"J_BA (A->B)", "J_AB (B->A)"}   # off-diagonal only -> where the real coupling lives
 
-spectra = {}   # collect all blocks' singular values for plotting
-for name, (in_ch, out_ch) in blocks.items():
-    jb, vb, di, do = make_block_ops(jvp, vjp, in_ch, out_ch)
-    Ub, Sb, Vb = jacobian_svd(jb, vb, di, do, K_BLOCK, N_ITER)
-    print(f"{name:11s} | " + " | ".join(f"{s:6.3f}" for s in Sb.tolist()))
-    spectra[name] = Sb.tolist()
+# spectra = {}   # collect all blocks' singular values for plotting
+# for name, (in_ch, out_ch) in blocks.items():
+#     jb, vb, di, do = make_block_ops(jvp, vjp, in_ch, out_ch)
+#     Ub, Sb, Vb = jacobian_svd(jb, vb, di, do, K_BLOCK, MIN_ITER, MAX_ITER)
+#     print(f"{name:11s} | " + " | ".join(f"{s:6.3f}" for s in Sb.tolist()))
+#     spectra[name] = Sb.tolist()
 
-    if name in cross_blocks:
-        safe_name = name.split(" ")[0]   # "J_BA", "J_AB" - strip the "(A->B)" for filenames
-        for i in range(K_BLOCK):
-            save_direction_image(Vb[:, i], f"{safe_name}_dir{i}")   # the input perturbation pattern (what changed)
-            v_full = expand_block_v(Vb[:, i], in_ch)
-            save_edit_traversal(x_t, v_full, f"{safe_name}_dir{i}")
+#     if name in cross_blocks:
+#         safe_name = name.split(" ")[0]   # "J_BA", "J_AB" - strip the "(A->B)" for filenames
+#         for i in range(K_BLOCK):
+#             save_direction_image(Vb[:, i], f"{safe_name}_dir{i}")   # the input perturbation pattern (what changed)
+#             v_full = expand_block_v(Vb[:, i], in_ch) #NOTE: pads the vector with zeroes for the other channel..!
+#             save_edit_traversal(x_t, v_full, f"{safe_name}_dir{i}")
 
 # plt.figure(figsize=(6, 4))
 # for name, s_vals in spectra.items():

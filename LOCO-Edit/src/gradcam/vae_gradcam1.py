@@ -51,7 +51,6 @@ class GradCAMVAE:
         self.gradients = grad_output[0].detach()  # (B, C, H, W)
     
     def __call__(self, input_tensor, latent_idx):
-        """Compute GradCAM for latent dimension latent_idx."""
         self.model.zero_grad()
         input_tensor.requires_grad_(True)
         
@@ -103,7 +102,7 @@ def save_overlay(raw_img_tensor, cam, save_path, title):
 
 
 if __name__ == "__main__":
-    # Model setup
+    #
     model_path = "vae_checkpoints_masked/beta_vae_beta=1_16/vae_epoch99.pt"
     model = twoChannelVAE(latent_dim=16)
     model.load_state_dict(torch.load(model_path, map_location=DEVICE))

@@ -211,6 +211,78 @@ def save_sample(sample_dir, chA, chB_real, chB_gen, agg, per_query, src_side, tg
             plt.close(fig)
 
 
+# def save_sample_flipped(sample_dir, chA, chB_real, chB_gen, agg, per_query, src_side, tgt_side):
+#     os.makedirs(sample_dir, exist_ok=True)
+#     points_dir = f"{sample_dir}/points_flipped"
+#     os.makedirs(points_dir, exist_ok=True)
+
+#     plt.imsave(f"{sample_dir}/chA.png", chA, cmap="gray")
+#     plt.imsave(f"{sample_dir}/chB_real.png", chB_real, cmap="gray")
+#     plt.imsave(f"{sample_dir}/chB_generated.png", chB_gen, cmap="gray")
+
+#     #source / real target / reconstructed target, side by side
+#     fig, axes = plt.subplots(1, 3, figsize=(12, 4))
+#     axes[0].imshow(chA, cmap="gray"); axes[0].set_title("chA (source)"); axes[0].axis("off")
+#     axes[1].imshow(chB_real, cmap="gray"); axes[1].set_title("chB (real)"); axes[1].axis("off")
+#     axes[2].imshow(chB_gen, cmap="gray"); axes[2].set_title(f"chB (reconstructed, START_T={START_T})"); axes[2].axis("off")
+#     fig.tight_layout()
+#     fig.savefig(f"{sample_dir}/triplet.png", dpi=120)
+#     plt.close(fig)
+
+#     #aggregate figure: which chA regions matter most, summed over the WHOLE
+#     #trajectory AND the whole chB image  (this is already the "flipped" total,
+#     #so it's unchanged from save_sample - see note below)
+#     fig, axes = plt.subplots(1, 2, figsize=(8, 4))
+#     axes[0].imshow(chA, cmap="gray"); axes[0].set_title("chA (source)"); axes[0].axis("off")
+#     axes[1].imshow(overlay_on(chA, agg))
+#     axes[1].set_title("aggregate importance per chA region\n(summed over full trajectory + all of chB)")
+#     axes[1].axis("off")
+#     fig.tight_layout()
+#     fig.savefig(f"{sample_dir}/aggregate.png", dpi=120)
+#     plt.close(fig)
+
+#     per_token = per_query.T   # [N_tok, Q] - fix a chA KEY, heat over chB QUERIES
+
+#     vmin, vmax = per_token.min().item(), per_token.max().item()
+#     def shared_normalize(m):
+#         return ((m - vmin) / (vmax - vmin + 1e-8)).numpy()
+
+#     fig, axes = plt.subplots(src_side, src_side, figsize=(src_side * 1.3, src_side * 1.3))
+#     for y in range(src_side):
+#         for x in range(src_side):
+#             k_idx = y * src_side + x
+#             m = shared_normalize(per_token[k_idx]).reshape(tgt_side, tgt_side)
+#             ax = axes[y, x]
+#             ax.imshow(overlay_on(chB_gen, m))          # chB now, not chA
+#             ax.set_xticks([]); ax.set_yticks([])
+#     fig.suptitle(f"per-chA-token attn received from chB, summed over full trajectory, "
+#                 f"one cell per chA token ({src_side}x{src_side}={src_side*src_side} total)")
+#     fig.tight_layout()
+#     fig.savefig(f"{sample_dir}/grid_flipped.png", dpi=150)
+#     plt.close(fig)
+
+#     cell_size = IMG_SIZE / src_side                 # box now sized to a chA token
+#     for y in range(src_side):
+#         for x in range(src_side):
+#             k_idx = y * src_side + x
+#             m = shared_normalize(per_token[k_idx]).reshape(tgt_side, tgt_side)
+
+#             fig, axes = plt.subplots(1, 2, figsize=(8, 4))
+#             axes[0].imshow(chA, cmap="gray")         # box goes on chA now
+#             rect = patches.Rectangle((x * cell_size, y * cell_size), cell_size, cell_size,
+#                                     linewidth=2, edgecolor="red", facecolor="none")
+#             axes[0].add_patch(rect)
+#             axes[0].set_title(f"chA token ({y},{x})"); axes[0].axis("off")
+#             axes[1].imshow(overlay_on(chB_gen, m))    # heatmap on chB
+#             axes[1].set_title("this chA token's attention over chB\n(summed over full trajectory)")
+#             axes[1].axis("off")
+#             fig.tight_layout()
+#             fig.savefig(f"{points_dir}/token_{y:02d}_{x:02d}.png", dpi=100)
+#             plt.close(fig)
+
+
+
+
 for i in SAMPLE_INDICES:
     x, mask = dataset[i]
     x = x.unsqueeze(0).to(DEVICE) 
@@ -218,7 +290,10 @@ for i in SAMPLE_INDICES:
       
     src_img = x[:, SRC_IDX:SRC_IDX+1]
     tgt_img = x[:, TGT_IDX:TGT_IDX+1]
-
+    
+    '''
+    #NOTE: change below function to get per_token view instead..
+    '''
     recon, agg, per_query, src_side, tgt_side = generate_and_collect(src_img, tgt_img, mask)
     chA = to_img(src_img)
     chB_real = to_img(tgt_img)
@@ -230,5 +305,34 @@ for i in SAMPLE_INDICES:
     print(f"sample idx {i} -> {sample_dir}/  "
           f"({src_side*src_side} chA tokens, {n_steps} steps aggregated, "
           f"grid.png + {tgt_side*tgt_side} individual files)")
+    
+'''
+below for visualziing all query heatmap- overlaid on a query img
+'''
+# for i in SAMPLE_INDICES:
+#     x, mask = dataset[i]
+#     x = x.unsqueeze(0).to(DEVICE)
+#     mask = mask.unsqueeze(0).to(DEVICE)
+
+#     src_img = x[:, SRC_IDX:SRC_IDX+1]
+#     tgt_img = x[:, TGT_IDX:TGT_IDX+1]
+
+#     recon, agg, per_query, src_side, tgt_side = generate_and_collect(src_img, tgt_img, mask)
+#     chA = to_img(src_img)
+#     chB_real = to_img(tgt_img)
+#     chB_gen = to_img(recon)
+
+#     sample_dir = f"{OUT_DIR}/sample_{i}"
+#     # save_sample(sample_dir, chA, chB_real, chB_gen, agg, per_query, src_side, tgt_side)
+#     save_sample_flipped(sample_dir, chA, chB_real, chB_gen, agg, per_query, src_side, tgt_side) 
+
+#     n_steps = len(scheduler.timesteps[scheduler.timesteps <= START_T])
+#     print(f"sample idx {i} -> {sample_dir}/  "
+#           f"({src_side*src_side} chA tokens, {n_steps} steps aggregated, "
+#           f"grid.png + grid_flipped.png + "
+#           f"{tgt_side*tgt_side + src_side*src_side} individual files)")
 
 print(f"\ndone. {len(SAMPLE_INDICES)} samples saved under {OUT_DIR}/sample_<idx>/")
+
+
+
