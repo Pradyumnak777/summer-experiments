@@ -9,8 +9,8 @@ sys.path.insert(0, REPO_DIR)
 import legacy
 
 DEVICE     = torch.device("cuda:9")
-PKL        = "stylegan2-ada-pytorch/training-runs/00010-data_npy-auto1-kimg1000-ada-bg/network-snapshot-001000.pkl"
-OUT_DIR    = "gan_latent_traversal_inverted_w"
+PKL        = "stylegan2-ada-pytorch/training-runs/00013-data_npy_masked-auto1-kimg1000-ada-bg/network-snapshot-001000.pkl"
+OUT_DIR    = "gan_masked_latent_traversal_inverted_w"
 TRUNC_PSI  = 1.0       # no truncation -> study the raw learned W-space
 N_DIMS     = 5         # traverse the first 5 raw W dimensions
 EDIT_SCALE = 12.0       
@@ -19,7 +19,7 @@ SEED       = 0
 os.makedirs(OUT_DIR, exist_ok=True)
 torch.manual_seed(SEED)
 
-# ---- load generator ----
+#
 with open(PKL, 'rb') as f:
     G = legacy.load_network_pkl(f)['G_ema'].to(DEVICE).eval()
 G.requires_grad_(False)
@@ -31,8 +31,12 @@ print(f"loaded G_ema: w_dim={W_DIM}, num_ws={NUM_WS}, img_channels={G.img_channe
 '''
 already loading inverted z-latent!!
 '''
+'''
+for recon, would have to do this for all the imgs int he validation set
+'''
+
 ws_anchor = torch.tensor(
-    np.load("gan_inversion_results/000000/projected_w.npz")["w"],
+    np.load("gan_inversion_results/000000/projected_w.npz")["w"], #loading a specific z latent.
     device=DEVICE, dtype=torch.float32
 )   
 
