@@ -3,9 +3,9 @@ import numpy as np
 from pathlib import Path
 from PIL import Image
 
-CHA_DIR = "data/singlecell_chA_split/train"   # same dirs diffusion/VAE used
-CHB_DIR = "data/singlecell_chB_split/train"
-OUT_DIR = "GAN/data_npy_masked"                       # where the stacked arrays go
+CHA_DIR = "data/singlecell_chA_split/validation"   # same dirs diffusion/VAE used
+CHB_DIR = "data/singlecell_chB_split/validation"
+OUT_DIR = "GAN/data_npy_masked_val"                       # where the stacked arrays go
 MASK_DIR = "data/singlecell_mask"
 SIZE    = 128
 

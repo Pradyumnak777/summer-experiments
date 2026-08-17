@@ -11,3 +11,11 @@ gan_inversion_results/
 gan_latent_traversal_inverted_w/
 gan_pca_results_inverted_w/
 data_npy_masked/
+data_npy_masked_new/
+data_npy_masked_val/
+gan_inversion_results_masked/
+gan_inversion_results_new/
+gan_latent_traversal_inverted_w_masked/
+gan_latent_traversal_inverted_w_new/
+gan_pca_results_inverted_w_masked/
+preview_out/

@@ -20,7 +20,7 @@ feat_cache = {}
 grad_cache = {}
 
 #config stuff
-CKPT     = "diffusion_checkpoints/ddpm_2ch_128/unet_ema_epoch80.pt"
+CKPT     = "diffusion_checkpoints/ddpm_2ch_128_masked/unet_ema_epoch80.pt"
 IMG_SIZE = 128
 K_FULL   = 5          # top-k directions for the full SVD
 K_BLOCK  = 5          # top-k for each channel block
@@ -84,9 +84,13 @@ def gradcam_1(x_t, v_k, lam, activation_layer, edit_t):
         model.zero_grad(set_to_none=True)
         with torch.enable_grad():
             x_t_edit = (x_t + lam * v_k).detach().requires_grad_(True)
-            x0_edit = get_x0(x_t_edit, edit_t)
+            x0_edit = get_x0(x_t_edit, edit_t) #tweedie's formula at this timestep
             feat = feat_cache['x']
 
+            
+            '''
+            both below scalars are ESTIMATES from a noisy timestep, and NOT the final edit..
+            '''
             scalar_A = (x0_edit[:, 0] - x0_base[:, 0]).pow(2).sum()
             scalar_B = (x0_edit[:, 1] - x0_base[:, 1]).pow(2).sum()
 
@@ -126,7 +130,7 @@ def save_gradcam_figure(recon, edit_recon, cam_A, cam_B, score_A, score_B, k, ou
         cam_colored = cm.jet(cam)[..., :3]
         gray = recon[ch]
         gray_edit = edit_recon[ch]
-        gray_rgb = np.stack([gray_edit] * 3, axis=-1)  # overlay sits on the EDITED image, not the base
+        gray_rgb = np.stack([gray] * 3, axis=-1)  # overlay sits on the BASE img now
         overlay = (alpha * cam_colored + (1 - alpha) * gray_rgb).clip(0, 1)
 
         axes[row, 0].imshow(gray, cmap="gray")
@@ -138,7 +142,7 @@ def save_gradcam_figure(recon, edit_recon, cam_A, cam_B, score_A, score_B, k, ou
         axes[row, 1].axis("off")
 
         axes[row, 2].imshow(overlay)
-        axes[row, 2].set_title(f"{name} + GradCAM (score={score_A if row==0 else score_B:.2f})")
+        axes[row, 2].set_title(f"{name}")
         axes[row, 2].axis("off")
 
     fig.suptitle(f"direction {k}")
@@ -153,12 +157,12 @@ if __name__ == "__main__":
     '''
     load custom diffusion model for running
     '''
-    RUN_DIR = f"diffusion_checkpoints/ddpm_2ch_128/jacobian_epoch80"
+    RUN_DIR = f"diffusion_checkpoints/ddpm_2ch_128_masked/500/jacobian_epoch80"
     x_t, EDIT_T = torch.load(f"{RUN_DIR}/data_files/x_t.pt", map_location=torch.device(device)) #loading from tuple (dited in diffusion_jacobian.py)
     Vd = torch.load(f"{RUN_DIR}/data_files/Vd.pt", map_location=torch.device(device))
     EDIT_T = int(EDIT_T)   # get_x0 indexes alphas_cumprod[EDIT_T], so keep it a plain int
 
-    lam = 10
+    lam = 7.0
     activation_layer = model.up_blocks[1]
 
     OUT_DIR = f"{RUN_DIR}/gradcam"

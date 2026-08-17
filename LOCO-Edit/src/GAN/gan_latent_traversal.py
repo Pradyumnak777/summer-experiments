@@ -7,9 +7,9 @@ REPO_DIR = "/scratch/pbk5339/summer/LOCO-Edit/src/GAN/stylegan2-ada-pytorch"
 sys.path.insert(0, REPO_DIR)
 import legacy
 
-DEVICE     = torch.device("cuda:0")
-PKL        = "stylegan2-ada-pytorch/training-runs/00010-data_npy-auto1-kimg1000-ada-bg/network-snapshot-001000.pkl"
-OUT_DIR    = "gan_latent_traversal"
+DEVICE     = torch.device("cuda:9")
+PKL        = "stylegan2-ada-pytorch/training-runs/00013-data_npy_masked-auto1-kimg1000-ada-bg/network-snapshot-001000.pkl"
+OUT_DIR    = "gan_latent_traversal_masked"
 TRUNC_PSI  = 1.0       # no truncation -> study the raw learned W-space
 N_DIMS     = 5         # traverse the first 5 raw W dimensions
 EDIT_SCALE = 7.0       

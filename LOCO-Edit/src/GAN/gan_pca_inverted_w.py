@@ -10,8 +10,8 @@ import legacy
 
 #config stuff
 DEVICE      = torch.device("cuda:9")
-PKL         = "stylegan2-ada-pytorch/training-runs/00010-data_npy-auto1-kimg1000-ada-bg/network-snapshot-001000.pkl"
-OUT_DIR     = "gan_pca_results_inverted_w"
+PKL         = "GAN/stylegan2-ada-pytorch/training-runs/00010-data_npy-auto1-kimg1000-ada-bg/network-snapshot-001000.pkl"
+OUT_DIR     = "GAN/gan_pca_results_inverted_w_masked"
 TRUNC_PSI   = 1.0       
 N_SAMPLES   = 100000      #how many w's we build the PCA from
 BATCH       = 100       
@@ -65,10 +65,19 @@ for i in range(K):
 #step 3: walk along each PCA direction, anchored at the mean w. same traversal mechanic as the axis one
 alphas = torch.linspace(-EDIT_SCALE, EDIT_SCALE, N_STEPS, device=DEVICE)
 real_w = torch.tensor(
-    np.load("gan_inversion_results/000000/projected_w.npz")["w"],
+    np.load("GAN/gan_inversion_results_masked/val/000000/projected_w.npz")["w"],
     device=DEVICE, dtype=torch.float32
 )   # [1, NUM_WS, 512]
 ws_anchor_full = real_w[0]   
+
+pca_save_path = "GAN/gan_pca_results_inverted_w_masked/dirs.npz"
+np.savez(
+    pca_save_path,
+    Vt=Vt.detach().cpu().numpy(),           # [512, 512] directions
+    w_mean=w_mean.detach().cpu().numpy(),   # [512] mean vector
+    S=S.detach().cpu().numpy(),             # Singular values
+)
+print(f"Saved PCA directions to {pca_save_path}")
 
 for i in range(K):
     v_i = Vt[i]                                           #the i-th direction, already unit norm

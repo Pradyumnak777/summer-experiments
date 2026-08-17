@@ -1,0 +1,6 @@
+checkpoint : GAN/stylegan2-ada-pytorch/training-runs/00013-data_npy_masked-auto1-kimg1000-ada-bg/network-snapshot-001000.pkl
+split      : validation   (1865 samples, full frame)
+
+                       MSE            PSNR (dB)               SSIM              LPIPS
+chA     0.00669 +- 0.01125     23.04 +- 2.97       0.755 +- 0.058     0.136 +- 0.046  
+chB     0.00611 +- 0.01364     23.42 +- 2.43       0.765 +- 0.050     0.128 +- 0.048  

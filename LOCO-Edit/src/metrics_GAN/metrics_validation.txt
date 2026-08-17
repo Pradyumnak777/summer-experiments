@@ -1,6 +1,6 @@
-checkpoint : GAN/stylegan2-ada-pytorch/training-runs/00013-data_npy_masked-auto1-kimg1000-ada-bg/network-snapshot-001000.pkl
+checkpoint : GAN/stylegan2-ada-pytorch/training-runs/00010-data_npy-auto1-kimg1000-ada-bg/network-snapshot-001000.pkl
 split      : validation   (1865 samples, full frame)
 
-                       MSE            PSNR (dB)               SSIM              LPIPS
-chA     0.00669 +- 0.01125     23.04 +- 2.97       0.755 +- 0.058     0.136 +- 0.046  
-chB     0.00611 +- 0.01364     23.42 +- 2.43       0.765 +- 0.050     0.128 +- 0.048  
+                       MSE            PSNR (dB)               SSIM              LPIPS         DINO Patch
+chA     0.01044 +- 0.03006     26.66 +- 5.69       0.818 +- 0.077     0.102 +- 0.141     0.801 +- 0.088  
+chB     0.01180 +- 0.03440     26.21 +- 5.47       0.817 +- 0.070     0.111 +- 0.141     0.801 +- 0.085  

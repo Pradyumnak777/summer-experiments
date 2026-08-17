@@ -23,7 +23,7 @@ from torch.utils.data import DataLoader
 #config
 DEVICE = torch.device("cuda:9")
 SET      = "validation"
-PKL      = "GAN/stylegan2-ada-pytorch/training-runs/00013-data_npy_masked-auto1-kimg1000-ada-bg/network-snapshot-001000.pkl"
+PKL      = "GAN/stylegan2-ada-pytorch/training-runs/00010-data_npy-auto1-kimg0600-ada-bg/network-snapshot-001000.pkl"
 CHA_DIR  = f"data/singlecell_chA_split/{SET}"
 CHB_DIR  = f"data/singlecell_chB_split/{SET}"
 SEED = 0
@@ -82,7 +82,8 @@ if __name__ == "__main__":
     
     x = x.to(DEVICE)
     x = ((x * 0.5 + 0.5).clamp(0, 1) * 255.0).round() #X needs to be in target range for the functtion
-    w_invert = project(G, D, targets=x, num_steps=NUM_STEPS, device=DEVICE, verbose=False)
+    w_steps = project(G, D, target=x, num_steps=NUM_STEPS, device=DEVICE, verbose=False)
+    w_invert = w_steps[-1].unsqueeze(0)
     w_invert = w_invert.detach().requires_grad_(True) #required for hooks!
     # with torch.no_grad():
     '''

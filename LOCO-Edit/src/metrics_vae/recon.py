@@ -5,7 +5,9 @@ reconstruction metrics for the 2 channel beta vae.
 mse, psnr and ssim over the full 128x128 frame, reported per channel.
 """
 import torch
+import torch.nn.functional as F
 from torch.utils.data import DataLoader
+from torchvision import transforms
 from skimage.metrics import structural_similarity
 import lpips
 
@@ -22,12 +24,50 @@ LATENT_DIM = 16
 BATCH_SIZE = 32
 
 loss_fn = lpips.LPIPS(net='alex').to(DEVICE)
+dino_model = torch.hub.load('facebookresearch/dinov2', 'dinov2_vits14').to(DEVICE).eval()
+dino_model.requires_grad_(False)
+
+#reqd. transforms for dino
+dino_norm = transforms.Normalize(
+    mean=[0.485, 0.456, 0.406],
+    std=[0.229, 0.224, 0.225]
+)
 
 
 def unnormalize(t):
     #model lives in [-1,1] because of normalize(0.5,0.5) and the tanh at the end.
     #push it to [0,1] so psnr and ssim can just use data_range=1.0
     return (t * 0.5 + 0.5).clamp(0, 1)
+
+
+def dino_patch_similarity_per_channel(x_u, xr_u):
+    scores = torch.empty(x_u.size(0), 2)
+    with torch.no_grad():
+        for c in range(2):
+            # 1. Repeat single channel to 3 channels and resize to 224x224 (divisible by 14)
+            a = x_u[:, c:c+1].repeat(1, 3, 1, 1)
+            b = xr_u[:, c:c+1].repeat(1, 3, 1, 1)
+            
+            a_res = F.interpolate(a, size=(224, 224), mode='bicubic', antialias=True)
+            b_res = F.interpolate(b, size=(224, 224), mode='bicubic', antialias=True)
+            
+            # 2. Apply ImageNet normalization
+            a_norm = dino_norm(a_res)
+            b_norm = dino_norm(b_res)
+            
+            # 3. Extract patch tokens [B, num_patches, embed_dim] (excluding CLS)
+            feat_a = dino_model.get_intermediate_layers(a_norm, n=1)[0]
+            feat_b = dino_model.get_intermediate_layers(b_norm, n=1)[0]
+            
+            # 4. Normalize along feature dimension and compute cosine similarity per patch
+            feat_a = F.normalize(feat_a, dim=-1)
+            feat_b = F.normalize(feat_b, dim=-1)
+            
+            # Average across spatial patches -> shape [B]
+            patch_sim = (feat_a * feat_b).sum(dim=-1).mean(dim=-1) # this is cosine similarty per patch
+            scores[:, c] = patch_sim.cpu()
+            
+    return scores
 
 
 def lpips_per_channel(x, x_recon):
@@ -43,7 +83,7 @@ def lpips_per_channel(x, x_recon):
 @torch.no_grad()
 def evaluate(model, loader, device):
     model.eval()
-    mses, ssims, kls, lpipss = [], [], [], []
+    mses, ssims, kls, lpipss, dinos = [], [], [], [], []
 
     for x, _ in loader:
         #dataset gives back (masked_image, mask). the image is already masked,
@@ -73,8 +113,9 @@ def evaluate(model, loader, device):
 
         #lpips wants the raw [-1,1] tensors, not the unnormalized [0,1] ones
         lpipss.append(lpips_per_channel(x, x_recon))
+        dinos.append(dino_patch_similarity_per_channel(x_u, xr_u))
 
-    return torch.cat(mses), torch.cat(ssims), torch.cat(kls), torch.cat(lpipss)
+    return torch.cat(mses), torch.cat(ssims), torch.cat(kls), torch.cat(lpipss), torch.cat(dinos)
 
 
 if __name__ == "__main__":
@@ -86,18 +127,19 @@ if __name__ == "__main__":
     model.load_state_dict(torch.load(CKPT, map_location=DEVICE))
     model.to(DEVICE)
 
-    mse, ssim, kl, lp = evaluate(model, loader, DEVICE)
+    mse, ssim, kl, lp, dino_sim = evaluate(model, loader, DEVICE)
 
     #psnr is just mse in log units
     psnr = 10.0 * torch.log10(1.0 / mse.clamp(min=1e-12))
 
     print(f"\ncheckpoint : {CKPT}")
     print(f"split      : {SET}   ({mse.shape[0]} samples, full frame)\n")
-    print(f"{'':5} {'MSE':>20} {'PSNR (dB)':>20} {'SSIM':>18} {'LPIPS':>18}")
+    print(f"{'':5} {'MSE':>20} {'PSNR (dB)':>20} {'SSIM':>18} {'LPIPS':>18} {'DINO Patch':>18}")
     for c, name in [(0, "chA"), (1, "chB")]:
         print(f"{name:5} {mse[:, c].mean().item():9.5f} +- {mse[:, c].std().item():<8.5f}"
               f"{psnr[:, c].mean().item():9.2f} +- {psnr[:, c].std().item():<8.2f}"
               f"{ssim[:, c].mean().item():8.3f} +- {ssim[:, c].std().item():<7.3f}"
-              f"{lp[:, c].mean().item():8.3f} +- {lp[:, c].std().item():<7.3f}")
+              f"{lp[:, c].mean().item():8.3f} +- {lp[:, c].std().item():<7.3f}"
+              f"{dino_sim[:, c].mean().item():8.3f} +- {dino_sim[:, c].std().item():<7.3f}")
     print(f"\nboth channels pooled MSE : {mse.mean().item():.5f}")
     # print(f"KL (nats/sample, {LATENT_DIM} dims) : {kl.mean().item():.3f} +- {kl.std().item():.3f}")

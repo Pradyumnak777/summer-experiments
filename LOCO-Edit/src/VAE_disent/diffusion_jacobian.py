@@ -16,12 +16,12 @@ CKPT     = "diffusion_checkpoints/ddpm_2ch_128_masked/unet_ema_epoch80.pt"
 CHA_DIR  = "data/singlecell_chA_split/train"
 CHB_DIR  = "data/singlecell_chB_split/train"
 IMG_SIZE = 128
-EDIT_T   = 400        #at what timestep to perform PMP/tweedies formula
+EDIT_T   = 500        #at what timestep to perform PMP/tweedies formula
 ANCHOR   = 1          #sum frame to anchor on
 K_FULL   = 10          # top-k directions for the full SVD
 # K_BLOCK  = 5          # top-k for each channel block
 # N_ITER   = 5        #similar to locoedt(?)
-EDIT_SCALE = 10.0     # sweep range for alpha (unit directions need a large multiplier - c.f.
+EDIT_SCALE = 7.0     # sweep range for alpha (unit directions need a large multiplier - c.f.
 N_STEPS  = 7           # images per traversal strip (odd number -> exact center = alpha=0)
 SEED     = 0           # reproducibility: fixes both x_t's noise and the random SVD init
 MIN_ITER = 10
