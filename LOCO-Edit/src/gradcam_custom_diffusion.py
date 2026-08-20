@@ -23,8 +23,8 @@ grad_cache = {}
 CKPT     = "diffusion_checkpoints/ddpm_2ch_128_masked/unet_ema_epoch80.pt"
 IMG_SIZE = 128
 K_FULL   = 5          # top-k directions for the full SVD
-K_BLOCK  = 5          # top-k for each channel block
-N_ITER   = 5          # subspace iterations
+# K_BLOCK  = 5          # top-k for each channel block
+# N_ITER   = 5          # subspace iterations
 
 
 #model specifications
@@ -124,7 +124,7 @@ def get_recon(x_t, edit_t):
 
 
 # cols now: base reconstruction | edited reconstruction (the actual moved image) | GradCAM overlay
-def save_gradcam_figure(recon, edit_recon, cam_A, cam_B, score_A, score_B, k, out_dir, alpha=0.5):
+def save_gradcam_figure(recon, edit_recon, cam_A, cam_B, score_A, score_B, k, out_dir, alpha=0.5, edit_t=None):
     fig, axes = plt.subplots(2, 3, figsize=(12, 8))
     for row, (ch, name, cam) in enumerate([(0, "chA", cam_A), (1, "chB", cam_B)]):
         cam_colored = cm.jet(cam)[..., :3]
@@ -134,7 +134,7 @@ def save_gradcam_figure(recon, edit_recon, cam_A, cam_B, score_A, score_B, k, ou
         overlay = (alpha * cam_colored + (1 - alpha) * gray_rgb).clip(0, 1)
 
         axes[row, 0].imshow(gray, cmap="gray")
-        axes[row, 0].set_title(f"{name} reconstruction")
+        axes[row, 0].set_title(f"{name} estimate at timestep {edit_t}")
         axes[row, 0].axis("off")
 
         axes[row, 1].imshow(gray_edit, cmap="gray")
@@ -157,7 +157,8 @@ if __name__ == "__main__":
     '''
     load custom diffusion model for running
     '''
-    RUN_DIR = f"diffusion_checkpoints/ddpm_2ch_128_masked/500/jacobian_epoch80"
+    # RUN_DIR = f"diffusion_checkpoints/ddpm_2ch_128_masked/500/jacobian_epoch80"
+    RUN_DIR = "diffusion_checkpoints/ddpm_2ch_128_masked/500/jacobian_epoch80_ddim_inversion"
     x_t, EDIT_T = torch.load(f"{RUN_DIR}/data_files/x_t.pt", map_location=torch.device(device)) #loading from tuple (dited in diffusion_jacobian.py)
     Vd = torch.load(f"{RUN_DIR}/data_files/Vd.pt", map_location=torch.device(device))
     EDIT_T = int(EDIT_T)   # get_x0 indexes alphas_cumprod[EDIT_T], so keep it a plain int
@@ -165,7 +166,7 @@ if __name__ == "__main__":
     lam = 7.0
     activation_layer = model.up_blocks[1]
 
-    OUT_DIR = f"{RUN_DIR}/gradcam"
+    OUT_DIR = f"{RUN_DIR}/gradcam_ddim_inversion"
     os.makedirs(OUT_DIR, exist_ok=True)
 
     # grayscale backdrop shared by every direction's overlay
@@ -175,7 +176,7 @@ if __name__ == "__main__":
         v_k = Vd[:, k].view(1, 2, H, W) #a single direction
         cam_A, cam_B, edit_recon, score_A, score_B = gradcam_1(x_t, v_k, lam, activation_layer, EDIT_T)
         print(f"dir{k:02d}: score_A={score_A:.4f}, score_B={score_B:.4f}")
-        save_gradcam_figure(recon, edit_recon, cam_A, cam_B, score_A, score_B, k, OUT_DIR)
+        save_gradcam_figure(recon, edit_recon, cam_A, cam_B, score_A, score_B, k, OUT_DIR, EDIT_T)
 
 
     print(f"done. figures in {OUT_DIR}/")

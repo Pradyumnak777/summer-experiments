@@ -29,7 +29,7 @@ IMG_SIZE   = 128
 BATCH_SIZE = 128
 EDIT_T     = 400
 
-DENOISE_STEPS = 25
+DENOISE_STEPS = 100
 SEED       = 0
 
 scheduler = DDPMScheduler(num_train_timesteps=1000)
@@ -157,6 +157,68 @@ def lpips_per_channel(x, x_recon):
 #     return torch.cat(mses), torch.cat(ssims), torch.cat(lpipss)
 
 
+# @torch.no_grad()
+# def evaluate(model, loader, device, t_int, denoise_steps=DENOISE_STEPS):
+#     mses, ssims, lpipss, dinos = [], [], [], []
+#     count = 0
+#     for x, _ in loader:
+#         print(f"batch{BATCH_SIZE} count: {count}")
+#         #dataset gives back (masked_image, mask), only the image is needed here
+#         x = x.to(device)
+
+#         #noise the real image up to t, then run the full reverse trajectory back down. this is the true presented anchor
+#         noise = torch.randn_like(x)
+#         t_batch = torch.full((x.shape[0],), t_int, device=device, dtype=torch.long)
+#         x_t = scheduler.add_noise(x, noise, t_batch)
+#         x0_hat = ddim_denoise(model, x_t, t_int, denoise_steps)
+
+#         x_u  = unnormalize(x)
+#         xr_u = unnormalize(x0_hat)
+
+#         #mse per image per channel over the whole frame. shape is [batch, 2]
+#         mses.append(((xr_u - x_u) ** 2).mean(dim=(2, 3)).cpu())
+
+#         #ssim wants numpy and does one 2d image at a time so loop it
+#         x_np, xr_np = x_u.cpu().numpy(), xr_u.cpu().numpy()
+#         batch_ssim = torch.empty(x.size(0), 2)
+#         for i in range(x.size(0)):
+#             for c in range(2):
+#                 batch_ssim[i, c] = structural_similarity(x_np[i, c], xr_np[i, c], data_range=1.0)
+#         ssims.append(batch_ssim)
+        
+#         lpipss.append(lpips_per_channel(x, x0_hat))
+#         dinos.append(dino_patch_similarity_per_channel(x_u, xr_u))
+#         count+=1
+#     return torch.cat(mses), torch.cat(ssims), torch.cat(lpipss), torch.cat(dinos)
+
+def ddim_inversion_step(model, x_prev, t_prev_int, t_int):
+    #one deterministic ddim inversion step, eta=0, from t_prev_int up to t_int
+    #mirror of ddim_step: same eps/x0_pred/recombine shape, but eps is evaluated at the
+    #point we already have and used as a stand-in for eps at the noisier point we want
+    t_prev = torch.full((x_prev.shape[0],), t_prev_int, device=x_prev.device, dtype=torch.long)
+    with torch.autocast(device_type="cuda", dtype=torch.float16):
+        eps = model(x_prev, t_prev).sample
+    eps = eps.float()
+    #t_prev<=0 counts as fully clean, same convention as ddim_step
+    ab_prev = alphas_cumprod[t_prev_int] if t_prev_int > 0 else torch.tensor(1.0, device=x_prev.device)
+    ab_t = alphas_cumprod[t_int]
+    x0_pred = (x_prev - (1 - ab_prev).sqrt() * eps) / ab_prev.sqrt()
+    return ab_t.sqrt() * x0_pred + (1 - ab_t).sqrt() * eps
+
+
+def ddim_inversion(model, x0_real, t_end, inversion_steps=DENOISE_STEPS):
+    #runs the full deterministic forward trajectory from 0 up to t_end -- this is what
+    #actually produces x_t for a real image (mirror of ddim_denoise, walked the other way)
+    timesteps = torch.linspace(0, t_end, inversion_steps + 1).round().long().tolist()
+    x = x0_real
+    for i in range(len(timesteps) - 1):
+        t_cur, t_next = timesteps[i], timesteps[i + 1]
+        if t_cur == t_next:
+            continue
+        x = ddim_inversion_step(model, x, t_cur, t_next)
+    return x
+
+
 @torch.no_grad()
 def evaluate(model, loader, device, t_int, denoise_steps=DENOISE_STEPS):
     mses, ssims, lpipss, dinos = [], [], [], []
@@ -166,10 +228,18 @@ def evaluate(model, loader, device, t_int, denoise_steps=DENOISE_STEPS):
         #dataset gives back (masked_image, mask), only the image is needed here
         x = x.to(device)
 
-        #noise the real image up to t, then run the full reverse trajectory back down. this is the true presented anchor
-        noise = torch.randn_like(x)
-        t_batch = torch.full((x.shape[0],), t_int, device=device, dtype=torch.long)
-        x_t = scheduler.add_noise(x, noise, t_batch)
+        '''
+        below is like SDEedit
+        '''
+        # noise = torch.randn_like(x)
+        # t_batch = torch.full((x.shape[0],), t_int, device=device, dtype=torch.long)
+        # x_t = scheduler.add_noise(x, noise, t_batch)
+
+        '''
+        below is using ddim_inversion
+        '''
+        x_t = ddim_inversion(model, x, t_int, denoise_steps)
+
         x0_hat = ddim_denoise(model, x_t, t_int, denoise_steps)
 
         x_u  = unnormalize(x)
@@ -185,13 +255,11 @@ def evaluate(model, loader, device, t_int, denoise_steps=DENOISE_STEPS):
             for c in range(2):
                 batch_ssim[i, c] = structural_similarity(x_np[i, c], xr_np[i, c], data_range=1.0)
         ssims.append(batch_ssim)
-        
+
         lpipss.append(lpips_per_channel(x, x0_hat))
         dinos.append(dino_patch_similarity_per_channel(x_u, xr_u))
-        count+=1
+        count += 1
     return torch.cat(mses), torch.cat(ssims), torch.cat(lpipss), torch.cat(dinos)
-
-
 
 
 if __name__ == "__main__":

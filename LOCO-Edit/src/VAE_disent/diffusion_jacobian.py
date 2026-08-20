@@ -27,10 +27,10 @@ SEED     = 0           # reproducibility: fixes both x_t's noise and the random 
 MIN_ITER = 10
 MAX_ITER = 100
 
-OUT_DIR  = f"diffusion_checkpoints/ddpm_2ch_128_masked/{EDIT_T}/jacobian_epoch80"
+OUT_DIR  = f"diffusion_checkpoints/ddpm_2ch_128_masked/{EDIT_T}/jacobian_epoch80_ddim_inversion"
 
 
-DENOISE_STEPS = 25
+DENOISE_STEPS = 100
 os.makedirs(OUT_DIR, exist_ok=True)
 torch.manual_seed(SEED)
 
@@ -195,81 +195,114 @@ def ddim_denoise(x_t, t_start, denoise_steps=DENOISE_STEPS):
         x = ddim_step(x, t_cur, t_next)
     return x
 
-# main fucntion
+#instead of noising like SDEedit
+def ddim_inversion_step(x_prev, t_prev_int, t_int):
+    t_prev = torch.full((x_prev.shape[0],), t_prev_int, device=x_prev.device, dtype=torch.long)
+    eps = model(x_prev, t_prev).sample
+    #treat t_prev<=0 as fully clean, matches how tweedie's x0 estimate is defined
+    ab_prev = alphas_cumprod[t_prev_int] if t_prev_int > 0 else torch.tensor(1.0, device=x_prev.device)
+    ab_t = alphas_cumprod[t_int]
+    x0_pred = (x_prev - (1 - ab_prev).sqrt() * eps) / ab_prev.sqrt()
+    return ab_t.sqrt() * x0_pred + (1 - ab_t).sqrt() * eps
 
-dataset = twoChannelDataset(CHA_DIR, CHB_DIR, mask_dir="data/singlecell_mask") #loading data
-x0_real, _ = dataset[ANCHOR] #actual img
-x0_real = x0_real.unsqueeze(0).to(DEVICE)
-noise   = torch.randn_like(x0_real)
-x_t = scheduler.add_noise(x0_real, noise, torch.tensor([EDIT_T], device=DEVICE)) #image noised to timestep t
+
+#instead of noising like SDEedit
+#runs the full deterministic forward trajectory from 0 up to t_end, this is what
+#actually produces x_t for a real image (mirror of ddim_denoise, walked the other way)
+@torch.no_grad()
+def ddim_inversion(x0_real, t_end, inversion_steps=DENOISE_STEPS):
+    timesteps = torch.linspace(0, t_end, inversion_steps + 1).round().long().tolist()
+    x = x0_real
+    for i in range(len(timesteps) - 1):
+        t_cur, t_next = timesteps[i], timesteps[i + 1]
+        if t_cur == t_next:
+            continue
+        x = ddim_inversion_step(x, t_cur, t_next)
+    return x
 
 
-with torch.no_grad():
+if __name__ == "__main__":
+    dataset = twoChannelDataset(CHA_DIR, CHB_DIR, mask_dir="data/singlecell_mask") #loading data
+    x0_real, _ = dataset[ANCHOR] #actual img
+    x0_real = x0_real.unsqueeze(0).to(DEVICE)
+    
     '''
-    below basically applies the PMP/tweedie's formula which predicts clean image from a noised image
+    below is like SDEedit
     '''
-    x0_hat_center = get_x0(x_t, EDIT_T)
-save_original_vs_recon(x0_real, x0_hat_center) #saving original vs PMP predicted on image
-
-jvp, vjp = build_linear_ops(x_t, EDIT_T) 
-
-'''
-below block perform jacobian FULL (both channels- 32,768 data)
-And then perform SVD to get top directions, along which x-t will be nudged to see the edit/disentanglement
-'''
-jf, vf, din, dout = make_full_ops(jvp, vjp) #flattened jvp and vjp basically
-U, S, Vd = jacobian_svd(jf, vf, din, dout, K_FULL, MIN_ITER, MAX_ITER) #U- output space(X_0) dirs. Vd- input space(X_t) dirs. S- singular values
-
-os.makedirs(f"{OUT_DIR}/data_files", exist_ok=True)
-torch.save((x_t.detach().cpu(), EDIT_T), f"{OUT_DIR}/data_files/x_t.pt") #this is the noise, to be used in gradCAM
-torch.save(Vd.detach().cpu(), f"{OUT_DIR}/data_files/Vd.pt") #
-
-print("\nbelow are the actual edit directions for the full 32,768 jacobian (2 channel)")
-print("dir |  sigma   | A-energy | B-energy | verdict")
-U_img = U.T.view(K_FULL, 2, H, W)
-for i in range(K_FULL):
-    eA = U_img[i, 0].pow(2).sum().item() #u is the edit direction o the output..?
-    eB = U_img[i, 1].pow(2).sum().item()
-    fracA = eA / (eA + eB + 1e-8)
-    verdict = "A-specific" if fracA > 0.8 else "B-specific" if fracA < 0.2 else "SHARED/coupled"
-    print(f" {i:2d} | {S[i].item():8.3f} |  {fracA:5.2f}   |  {1-fracA:5.2f}   | {verdict}")
-    v_i = Vd[:, i].view(1, 2, H, W) #the input directions, this is multiplied with the anchors?
-    save_edit_traversal(x_t, v_i, f"full_dir{i}")
-
+    noise   = torch.randn_like(x0_real)
+    x_t = scheduler.add_noise(x0_real, noise, torch.tensor([EDIT_T], device=DEVICE)) #image noised to timestep t
 
     '''
-    #NOTE: below for channelwise!
+    below is using ddim_inversion
     '''
+    x_t = ddim_inversion(x0_real, EDIT_T)
+    
+    with torch.no_grad():
+        '''
+        below basically applies the PMP/tweedie's formula which predicts clean image from a noised image
+        '''
+        x0_hat_center = get_x0(x_t, EDIT_T)
+    save_original_vs_recon(x0_real, x0_hat_center) #saving original vs PMP predicted on image
 
-# print("\nbelow are J_AB, J_BA, etc")
-# print("block | " + " | ".join(f"s{j}" for j in range(K_BLOCK)))
-# blocks = {"J_AA": (0, 0), "J_BB": (1, 1), "J_BA (A->B)": (0, 1), "J_AB (B->A)": (1, 0)}
-# cross_blocks = {"J_BA (A->B)", "J_AB (B->A)"}   # off-diagonal only -> where the real coupling lives
+    jvp, vjp = build_linear_ops(x_t, EDIT_T) 
 
-# spectra = {}   # collect all blocks' singular values for plotting
-# for name, (in_ch, out_ch) in blocks.items():
-#     jb, vb, di, do = make_block_ops(jvp, vjp, in_ch, out_ch)
-#     Ub, Sb, Vb = jacobian_svd(jb, vb, di, do, K_BLOCK, MIN_ITER, MAX_ITER)
-#     print(f"{name:11s} | " + " | ".join(f"{s:6.3f}" for s in Sb.tolist()))
-#     spectra[name] = Sb.tolist()
+    '''
+    below block perform jacobian FULL (both channels- 32,768 data)
+    And then perform SVD to get top directions, along which x-t will be nudged to see the edit/disentanglement
+    '''
+    jf, vf, din, dout = make_full_ops(jvp, vjp) #flattened jvp and vjp basically
+    U, S, Vd = jacobian_svd(jf, vf, din, dout, K_FULL, MIN_ITER, MAX_ITER) #U- output space(X_0) dirs. Vd- input space(X_t) dirs. S- singular values
 
-#     if name in cross_blocks:
-#         safe_name = name.split(" ")[0]   # "J_BA", "J_AB" - strip the "(A->B)" for filenames
-#         for i in range(K_BLOCK):
-#             save_direction_image(Vb[:, i], f"{safe_name}_dir{i}")   # the input perturbation pattern (what changed)
-#             v_full = expand_block_v(Vb[:, i], in_ch) #NOTE: pads the vector with zeroes for the other channel..!
-#             save_edit_traversal(x_t, v_full, f"{safe_name}_dir{i}")
+    os.makedirs(f"{OUT_DIR}/data_files", exist_ok=True)
+    torch.save((x_t.detach().cpu(), EDIT_T), f"{OUT_DIR}/data_files/x_t.pt") #this is the noise, to be used in gradCAM
+    torch.save(Vd.detach().cpu(), f"{OUT_DIR}/data_files/Vd.pt") #
 
-# plt.figure(figsize=(6, 4))
-# for name, s_vals in spectra.items():
-#     plt.plot(range(len(s_vals)), s_vals, marker="o", label=name)
-# plt.yscale("log")                      # cross-block values likely much smaller -> log scale shows both clearly
-# plt.xlabel("rank (s0, s1, ...)")
-# plt.ylabel("singular value")
-# plt.title(f"Block Jacobian singular value spectra (t={EDIT_T})")
-# plt.legend()
-# plt.tight_layout()
-# plt.savefig(f"{OUT_DIR}/singular_value_spectra.png")
-# plt.close()
+    print("\nbelow are the actual edit directions for the full 32,768 jacobian (2 channel)")
+    print("dir |  sigma   | A-energy | B-energy | verdict")
+    U_img = U.T.view(K_FULL, 2, H, W)
+    for i in range(K_FULL):
+        eA = U_img[i, 0].pow(2).sum().item() #u is the edit direction o the output..?
+        eB = U_img[i, 1].pow(2).sum().item()
+        fracA = eA / (eA + eB + 1e-8)
+        verdict = "A-specific" if fracA > 0.8 else "B-specific" if fracA < 0.2 else "SHARED/coupled"
+        print(f" {i:2d} | {S[i].item():8.3f} |  {fracA:5.2f}   |  {1-fracA:5.2f}   | {verdict}")
+        v_i = Vd[:, i].view(1, 2, H, W) #the input directions, this is multiplied with the anchors?
+        save_edit_traversal(x_t, v_i, f"full_dir{i}")
 
-print(f"\nsaved traversal grids to {OUT_DIR}/")
+
+        '''
+        #NOTE: below for channelwise!
+        '''
+
+    # print("\nbelow are J_AB, J_BA, etc")
+    # print("block | " + " | ".join(f"s{j}" for j in range(K_BLOCK)))
+    # blocks = {"J_AA": (0, 0), "J_BB": (1, 1), "J_BA (A->B)": (0, 1), "J_AB (B->A)": (1, 0)}
+    # cross_blocks = {"J_BA (A->B)", "J_AB (B->A)"}   # off-diagonal only -> where the real coupling lives
+
+    # spectra = {}   # collect all blocks' singular values for plotting
+    # for name, (in_ch, out_ch) in blocks.items():
+    #     jb, vb, di, do = make_block_ops(jvp, vjp, in_ch, out_ch)
+    #     Ub, Sb, Vb = jacobian_svd(jb, vb, di, do, K_BLOCK, MIN_ITER, MAX_ITER)
+    #     print(f"{name:11s} | " + " | ".join(f"{s:6.3f}" for s in Sb.tolist()))
+    #     spectra[name] = Sb.tolist()
+
+    #     if name in cross_blocks:
+    #         safe_name = name.split(" ")[0]   # "J_BA", "J_AB" - strip the "(A->B)" for filenames
+    #         for i in range(K_BLOCK):
+    #             save_direction_image(Vb[:, i], f"{safe_name}_dir{i}")   # the input perturbation pattern (what changed)
+    #             v_full = expand_block_v(Vb[:, i], in_ch) #NOTE: pads the vector with zeroes for the other channel..!
+    #             save_edit_traversal(x_t, v_full, f"{safe_name}_dir{i}")
+
+    # plt.figure(figsize=(6, 4))
+    # for name, s_vals in spectra.items():
+    #     plt.plot(range(len(s_vals)), s_vals, marker="o", label=name)
+    # plt.yscale("log")                      # cross-block values likely much smaller -> log scale shows both clearly
+    # plt.xlabel("rank (s0, s1, ...)")
+    # plt.ylabel("singular value")
+    # plt.title(f"Block Jacobian singular value spectra (t={EDIT_T})")
+    # plt.legend()
+    # plt.tight_layout()
+    # plt.savefig(f"{OUT_DIR}/singular_value_spectra.png")
+    # plt.close()
+
+    print(f"\nsaved traversal grids to {OUT_DIR}/")

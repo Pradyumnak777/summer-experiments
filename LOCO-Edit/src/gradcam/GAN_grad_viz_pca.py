@@ -20,6 +20,13 @@ import numpy as np
 from VAE_disent.data_utils import twoChannelDataset
 from torch.utils.data import DataLoader
 
+import debugpy
+debugpy.listen(("127.0.0.1", 5678))
+print("Waiting for debugger attach on port 5678...")
+debugpy.wait_for_client()
+print("Debugger attached! Running code...")
+
+
 #config
 DEVICE = torch.device("cuda:9")
 SET      = "validation"
@@ -54,6 +61,9 @@ def jacobian_gen(G, w_invert, v_pca_dir):
     v = torch.zeros_like(w_invert)
     
     v = torch.zeros_like(w_invert)
+    
+    
+    
     if w_invert.ndim == 2:
         # Standard W space: [1, 512]
         v[0] = v_pca_dir
@@ -118,8 +128,13 @@ if __name__ == "__main__":
     x = x.to(DEVICE)
     x_target = ((x * 0.5 + 0.5).clamp(0, 1) * 255.0).round()
     
+    #checking if its W space or not-
+    w = np.load(W_DIR)["w"]
+    check = np.abs(w - w[:, :1, :]).max()
+    print(check) #maxium difference between the 12 nums of 512 dim Ws
+    
     # Load pre-computed W-space vector instead of inverting
-    w_invert = torch.tensor(np.load(W_DIR)["w"], device=DEVICE, dtype=torch.float32)
+    w_invert = torch.tensor(w, device=DEVICE, dtype=torch.float32)
     w_invert = w_invert.detach().requires_grad_(True)
     
     pca_data = np.load(PCA_DIR)
