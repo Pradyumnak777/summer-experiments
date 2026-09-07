@@ -23,17 +23,16 @@ SAVE_DIR    = "diffusion_checkpoints/ddpm_chB_128_masked"
 IMG_SIZE    = 128
 
 PRETRAINED_MODEL = "diffusion_checkpoints/ddpm_2ch_128_masked/unet_ema_epoch80.pt"
-#could swap to unet_ema_epoch80.pt instead, probably the better converged weights
 
 TARGET_CHANNEL = 1        #0 = chA, 1 = chB
 BATCH_SIZE     = 32
 NUM_EPOCHS     = 80        #warm start converges faster than the 200 the 2ch needed from scratch
-LR             = 5e-5      #lower than scratch LR since we're fine-tuning a good init
+LR             = 5e-5      #lower than scratch LR since we're fine-tuning a good init (from 2ch)
 NUM_TRAIN_TIMESTEPS = 1000
 SAVE_EVERY     = 10
 PRINT_EVERY    = 200
 
-#L2-SP(?)- weights penalized furthey they stray from the pretrained ones?
+#L2-SP(?)- weights penalized further they stray from the pretrained ones?
 USE_L2SP    = False
 # L2SP_WEIGHT = 1e-4
 
@@ -176,10 +175,10 @@ for epoch in range(NUM_EPOCHS):
         noise_pred = model(noisy_x, timesteps).sample
         loss = F.mse_loss(noise_pred, noise)
 
-        if USE_L2SP:
-            l2sp = sum(((p - ref_params[k])**2).sum()
-                       for k, p in model.named_parameters() if k in ref_params)
-            loss = loss + L2SP_WEIGHT * l2sp
+        # if USE_L2SP:
+        #     l2sp = sum(((p - ref_params[k])**2).sum()
+        #                for k, p in model.named_parameters() if k in ref_params)
+        #     loss = loss + L2SP_WEIGHT * l2sp
 
         optimizer.zero_grad()
         loss.backward()

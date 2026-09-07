@@ -87,10 +87,16 @@ class CrossAttnProcessor(nn.Module):
         #or the frozen branch won't match the original numerics
         if attn.group_norm is not None:
             hidden_states = attn.group_norm(hidden_states.transpose(1, 2)).transpose(1, 2)
-
+        
+        '''
+        below is for the noisy chB input. weight matrix for Q
+        '''
         query = attn.to_q(hidden_states)
 
         #original self-attention (frozen)
+        '''
+        K,V weight matrices for self attention..
+        '''
         key   = attn.to_k(hidden_states)
         value = attn.to_v(hidden_states)
         q = attn.head_to_batch_dim(query)
@@ -102,6 +108,9 @@ class CrossAttnProcessor(nn.Module):
 
         #added cross-attention to the source tokens (trainable)
         if self.tokens is not None:
+            '''
+            below is for the added cross attention (K,V weight matrices..)
+            '''
             k_img = attn.head_to_batch_dim(self.to_k_img(self.tokens))
             v_img = attn.head_to_batch_dim(self.to_v_img(self.tokens))
 
@@ -109,6 +118,11 @@ class CrossAttnProcessor(nn.Module):
             if self.token_mask is not None:
                 b, n_tok = self.token_mask.shape
                 bias = torch.zeros(b, 1, n_tok, device=q.device, dtype=q.dtype)
+                '''
+                #NOTE: for every spot where the mask is not there, make the
+                bias "-inf" there. This will essentially not create any attention
+                score in these areas..
+                '''
                 bias.masked_fill_(~self.token_mask.unsqueeze(1), float('-inf'))
                 img_attn_mask = attn.prepare_attention_mask(bias, n_tok, b)
 

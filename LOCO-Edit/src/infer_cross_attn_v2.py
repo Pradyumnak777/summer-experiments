@@ -12,10 +12,10 @@ from VAE_disent.data_utils import twoChannelDataset
 from cross_attn_modules import ChannelEncoder, install_cross_attn, set_tokens, set_store_attn
 
 import debugpy
-# debugpy.listen(("127.0.0.1", 5678)) #127.0.0.1, cz only local host can talk to the port
-# print("Waiting for debugger to attach...")
-# debugpy.wait_for_client()
-# print("Debugger attached! Running code...")
+debugpy.listen(("127.0.0.1", 5678)) #127.0.0.1, cz only local host can talk to the port
+print("Waiting for debugger to attach...")
+debugpy.wait_for_client()
+print("Debugger attached! Running code...")
 
 DEVICE   = torch.device("cuda:9")
 SET = "train"

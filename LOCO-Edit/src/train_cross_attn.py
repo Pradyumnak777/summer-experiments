@@ -13,9 +13,9 @@ from diffusers.optimization import get_cosine_schedule_with_warmup
 from diffusers.training_utils import EMAModel
 
 import debugpy
-# debugpy.listen(("localhost", 5678))
-# print("Waiting for debugger attach...")
-# debugpy.wait_for_client()
+debugpy.listen(("127.0.0.1", 5678))
+print("Waiting for debugger attach...")
+debugpy.wait_for_client()
 
 
 
