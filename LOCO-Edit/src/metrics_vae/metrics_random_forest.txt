@@ -1,0 +1,38 @@
+fitting random forest..
+random forest successfully fit..
+=== Disentanglement (per code variable) ===
+  c00: D=0.090  rho=0.031
+  c01: D=0.048  rho=0.117
+  c02: D=0.109  rho=0.010
+  c03: D=0.171  rho=0.119
+  c04: D=0.069  rho=0.026
+  c05: D=0.233  rho=0.069
+  c06: D=0.177  rho=0.035
+  c07: D=0.150  rho=0.129
+  c08: D=0.108  rho=0.014
+  c09: D=0.025  rho=0.007
+  c10: D=0.190  rho=0.059
+  c11: D=0.159  rho=0.035
+  c12: D=0.068  rho=0.008
+  c13: D=0.077  rho=0.324
+  c14: D=0.186  rho=0.011
+  c15: D=0.018  rho=0.006
+Overall disentanglement: 0.120
+
+=== Completeness (per generative factor) ===
+                  area: C=0.394
+                 width: C=0.392
+                height: C=0.218
+          aspect_ratio: C=0.126
+         avg_intensity: C=0.161
+  integrated_intensity: C=0.456
+Overall completeness: 0.291
+
+=== Informativeness (per generative factor, normalized MSE) ===
+                  area: err=0.022
+                 width: err=0.041
+                height: err=0.040
+          aspect_ratio: err=0.061
+         avg_intensity: err=0.038
+  integrated_intensity: err=0.022
+Overall informativeness (mean err): 0.037

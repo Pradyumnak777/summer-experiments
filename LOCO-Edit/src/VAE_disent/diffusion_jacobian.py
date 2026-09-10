@@ -229,8 +229,8 @@ if __name__ == "__main__":
     '''
     below is like SDEedit
     '''
-    noise   = torch.randn_like(x0_real)
-    x_t = scheduler.add_noise(x0_real, noise, torch.tensor([EDIT_T], device=DEVICE)) #image noised to timestep t
+    # noise   = torch.randn_like(x0_real)
+    # x_t = scheduler.add_noise(x0_real, noise, torch.tensor([EDIT_T], device=DEVICE)) #image noised to timestep t
 
     '''
     below is using ddim_inversion
