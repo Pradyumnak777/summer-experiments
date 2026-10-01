@@ -19,7 +19,7 @@ from diffusion_model import build_unet
 DEVICE      = torch.device("cuda:9")
 CHA_DIR     = "data/singlecell_chA_split/train"
 CHB_DIR     = "data/singlecell_chB_split/train"
-SAVE_DIR    = "diffusion_checkpoints/ddpm_2ch_128_masked"
+SAVE_DIR    = "diffusion_checkpoints_testing/ddpm_2ch_128_masked"
 IMG_SIZE    = 128
 BATCH_SIZE  = 32
 NUM_EPOCHS  = 100

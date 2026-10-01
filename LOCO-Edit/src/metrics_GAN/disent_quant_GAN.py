@@ -10,12 +10,13 @@ from sklearn.metrics import mean_squared_error
 from sklearn.model_selection import train_test_split
 from tqdm import tqdm
 from VAE_disent.data_utils import twoChannelDataset
+from sklearn.ensemble import RandomForestRegressor
 
 import debugpy
-debugpy.listen(("127.0.0.1", 5678)) #127.0.0.1, cz only local host can talk to the port
-print("Waiting for debugger to attach...")
-debugpy.wait_for_client()
-print("Debugger attached! Running code...")
+# debugpy.listen(("127.0.0.1", 5678)) #127.0.0.1, cz only local host can talk to the port
+# print("Waiting for debugger to attach...")
+# debugpy.wait_for_client()
+# print("Debugger attached! Running code...")
 
 
 DEVICE           = torch.device("cuda:9")
@@ -103,6 +104,13 @@ def compute_ganspace_codes(w_dir, pca_path, k_components):
             w_base = w_vec
 
         # Center and project: [512] @ [512, K] -> [K]
+        
+        '''
+        the codes(alternative to the latent codes in VAEs) here represent how far alaong the edit direction that 
+        specific W vector(unique to a single cell) is. As there are 10 dimensions, it will be a list for each W, of length 10.
+
+        positive means the image sits further along v_i than the population average, negative means it sits in the opposite direction from the average
+        '''
         c = (w_base - w_mean) @ V
         codes.append(c)
 
@@ -123,6 +131,32 @@ def fit_lasso_importance_matrix(C_train, Z_train):
         R[:, j] = np.abs(reg.coef_)
         models.append(reg)
 
+    return R, models, (c_mean, c_std, z_mean, z_std)
+
+def fit_randomforest_importance_matrix(C_train, Z_train):
+    #standardize codes/factors to zero mean, unit variance (as in the paper)
+    c_mean, c_std = C_train.mean(0), C_train.std(0) + 1e-8
+    z_mean, z_std = Z_train.mean(0), Z_train.std(0) + 1e-8
+    C_norm = (C_train - c_mean) / c_std
+    Z_norm = (Z_train - z_mean) / z_std
+    
+    D, K = C_norm.shape[1], Z_norm.shape[1] #D= 16 here, K = 6 (generative factors)
+    R = np.zeros((D, K)) #16x16 -> importance matrix
+    models = []
+    
+    for j in range(K):
+        #train the regressors
+        rf = RandomForestRegressor(n_estimators=100, random_state=42, max_depth=20)
+        '''
+        #NOTE:
+        below, 1. C_norm is the features(in GAN, its where you are on the direction vector!!) (random subspaces) AND
+        2. Z_norm[:, j] are the data elements for that specific factor (could be area, width,etc)
+        
+        '''
+        rf.fit(C_norm, Z_norm[:, j])
+        R[:, j] = rf.feature_importances_
+        models.append(rf)
+    
     return R, models, (c_mean, c_std, z_mean, z_std)
 
 def disentanglement_scores(R):
@@ -174,7 +208,19 @@ if __name__ == "__main__":
 
     # 3. Fit Lasso regressions and evaluate DCI
     C_train, C_test, Z_train, Z_test = train_test_split(C, Z, test_size=0.2, random_state=0)
-    R, lasso_models, stats = fit_lasso_importance_matrix(C_train, Z_train)
+    '''
+    below for lasso
+    '''
+    # R, lasso_models, stats = fit_lasso_importance_matrix(C_train, Z_train)
+    
+    '''
+    below for random forest
+    '''
+    print("fitting random forest..")
+    R, lasso_models, stats = fit_randomforest_importance_matrix(C_train, Z_train)
+    print("random forest successfully fit..")
+    
+    
 
     D_i, rho, overall_disentanglement = disentanglement_scores(R)
     C_j, overall_completeness = completeness_scores(R)
