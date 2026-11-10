@@ -1,0 +1,18 @@
+svm direction: intensity, model ext30  vs  top-10 ganspace directions (GAN/gan_pca_results_inverted_w_masked/dirs.npz)
+random-direction baseline |cos| ~ 0.044
+spearman: position along the direction (inverted burst w's, n=12890) vs raw intensity
+
+ dir  | % var (sampled w) |  cos w/ svm | sd (inverted w) | spearman
+ pca0 |       1.20%       |   +0.040   |      1.733      | +0.025
+ pca1 |       1.15%       |   -0.149   |      1.963      | +0.103
+ pca2 |       1.11%       |   +0.003   |      1.907      | +0.065
+ pca3 |       1.09%       |   +0.011   |      1.923      | +0.167
+ pca4 |       1.08%       |   +0.038   |      1.967      | +0.009
+ pca5 |       1.03%       |   +0.033   |      2.094      | -0.110
+ pca6 |       1.00%       |   +0.004   |      2.201      | +0.013
+ pca7 |       0.99%       |   +0.048   |      2.038      | -0.076
+ pca8 |       0.98%       |   -0.024   |      2.087      | +0.079
+ pca9 |       0.96%       |   -0.017   |      1.974      | -0.027
+ svm  |         -         |   +1.000   |      2.253      | +0.591   (incl. the svm's own train frames, so higher than its val spearman)
+
+fraction of the svm direction inside the top-10 span (sum cos^2): 0.030   (random baseline ~ 0.020)

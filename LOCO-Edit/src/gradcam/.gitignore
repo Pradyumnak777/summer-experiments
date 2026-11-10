@@ -3,3 +3,5 @@ gan_viz_results_normal/
 gan_viz_results_pca/
 v1/
 v2/
+gan_viz_results_svm/
+vae_guided/

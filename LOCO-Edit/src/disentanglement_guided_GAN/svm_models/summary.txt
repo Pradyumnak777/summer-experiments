@@ -1,0 +1,9 @@
+intensity | train acc 0.765 | val acc 0.655 | val high/total 1901/3613
+area      | train acc 0.715 | val acc 0.565 | val high/total 1855/3613
+aspect    | train acc 0.634 | val acc 0.519 | val high/total 1898/3613
+
+cosine similarity between directions:
+          intensity      area    aspect
+intensity     1.000     0.397     0.108
+area          0.397     1.000    -0.136
+aspect        0.108    -0.136     1.000

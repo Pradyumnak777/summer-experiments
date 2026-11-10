@@ -19,7 +19,8 @@ raw_tiffs/*
 !raw_tiffs/.gitkeep
 vae_checkpoints/
 diffusion_checkpoints/
-testing/
+#only src/testing/ (a plain testing/ also hid disentanglement_guided_GAN/testing/svm_edit.py)
+/testing/
 cross_attn_checkpoints/
 cross_attn/
 diffusion_1ch_comparisons/

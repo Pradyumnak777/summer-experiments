@@ -1,0 +1,26 @@
+ridge regression on the raw factors (intensity, log area, log aspect), every train frame, alpha by 3-fold grouped cv
+val spearman = rank corr between the position along the direction (w . d) and the raw factor, val cells
+
+intensity  (best alpha 3.16e+04, cv r2 0.234)
+  ridge fit          train r2 0.527 | val r2 0.421
+  slope              a step of 1 along the ridge direction moves the predicted intensity by 0.0222   (factor sd on train 0.1610)
+  val spearman       ridge +0.487 | cov +0.461 | svm median +0.438 | svm ext30 +0.431
+  cos w/ ridge       cov +0.649 | svm median +0.614 | svm ext30 +0.598
+
+area  (best alpha 1e+05, cv r2 0.031)
+  ridge fit          train r2 0.185 | val r2 0.051
+  slope              a step of 1 along the ridge direction moves the predicted log area by 0.0583   (factor sd on train 0.7783)
+  val spearman       ridge +0.267 | cov +0.176 | svm median +0.210 | svm ext30 +0.234
+  cos w/ ridge       cov +0.861 | svm median +0.724 | svm ext30 +0.731
+
+aspect  (best alpha 3.16e+05, cv r2 0.016)
+  ridge fit          train r2 0.043 | val r2 0.009
+  slope              a step of 1 along the ridge direction moves the predicted log aspect by 0.0049   (factor sd on train 0.2364)
+  val spearman       ridge +0.098 | cov +0.088 | svm median +0.048 | svm ext30 +0.071
+  cos w/ ridge       cov +0.885 | svm median +0.551 | svm ext30 +0.572
+
+cosine similarity between the ridge directions:
+          intensity      area    aspect
+intensity     1.000     0.343     0.239
+area          0.343     1.000    -0.320
+aspect        0.239    -0.320     1.000

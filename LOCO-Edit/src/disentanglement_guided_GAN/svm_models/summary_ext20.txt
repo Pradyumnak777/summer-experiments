@@ -1,0 +1,25 @@
+extreme split: top/bottom 20% of each factor (train thresholds)
+
+intensity  (trained on 3713 frames)
+  train factor range  low [0.039, 0.702] | high [0.933, 1.000]
+  acc on extremes     train 0.923 | val 0.773
+  all val frames      median split acc 0.675 | spearman(svm score, raw factor) +0.437
+  train cells/videos  low 128/21 | high 167/18
+
+area  (trained on 3716 frames)
+  train factor range  low [-0.136, 2.740] | high [4.082, 5.486]  (log)
+  acc on extremes     train 0.872 | val 0.627
+  all val frames      median split acc 0.580 | spearman(svm score, raw factor) +0.234
+  train cells/videos  low 181/20 | high 140/18
+
+aspect  (trained on 3753 frames)
+  train factor range  low [0.000, 0.235] | high [0.607, 1.386]  (log)
+  acc on extremes     train 0.729 | val 0.523
+  all val frames      median split acc 0.523 | spearman(svm score, raw factor) +0.067
+  train cells/videos  low 245/21 | high 236/20
+
+cosine similarity between directions:
+          intensity      area    aspect
+intensity     1.000     0.305     0.058
+area          0.305     1.000    -0.248
+aspect        0.058    -0.248     1.000

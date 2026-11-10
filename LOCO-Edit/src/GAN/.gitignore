@@ -20,3 +20,7 @@ gan_latent_traversal_inverted_w_new/
 gan_pca_results_inverted_w_masked/
 preview_out/
 gan_inverted_ws_train-set/
+gan_inverted_ws_gene_burst_masked_train/
+inversion_steps_quality_inspection/
+gan_inverted_ws_gene_burst_masked_val/
+gan_generated_ws_gene_burst_masked/

@@ -1,0 +1,18 @@
+direction: svm normal, svm intensity ext20, alphas [-6.0, -4.0, -2.0, 0.0, 2.0, 4.0, 6.0]
+score = fraction of the 6 pushes that move the intensity the right way compared to the recon (~0.5 = no useful effect)
+
+train: 9277 frames, recon has a burst in 5288, detector errors 1
+  all    n= 5288 | score 0.598 | down 0.675 | up 0.521 | detected only 0.685 | spearman +0.394 (n=3340)
+  bright n= 3800 | score 0.602 | down 0.694 | up 0.509 | detected only 0.680 | spearman +0.378 (n=2491)
+  dim    n= 1488 | score 0.590 | down 0.628 | up 0.552 | detected only 0.698 | spearman +0.442 (n=849)
+               alpha    -6.0    -4.0    -2.0    +0.0    +2.0    +4.0    +6.0
+      mean intensity   0.822   0.839   0.855   0.866   0.864   0.857   0.845
+    no burst found %    46.0    43.3    42.6    43.0    43.9    45.7    47.1
+
+val: 3613 frames, recon has a burst in 2124, detector errors 0
+  all    n= 2124 | score 0.574 | down 0.645 | up 0.504 | detected only 0.679 | spearman +0.370 (n=1240)
+  bright n= 1504 | score 0.597 | down 0.678 | up 0.517 | detected only 0.696 | spearman +0.398 (n=924)
+  dim    n=  620 | score 0.519 | down 0.565 | up 0.473 | detected only 0.638 | spearman +0.289 (n=316)
+               alpha    -6.0    -4.0    -2.0    +0.0    +2.0    +4.0    +6.0
+      mean intensity   0.821   0.837   0.857   0.864   0.870   0.862   0.847
+    no burst found %    45.3    42.5    41.9    41.2    43.7    45.3    47.6

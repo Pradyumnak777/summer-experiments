@@ -1,0 +1,7 @@
+#same layout as heatmap_CLIP/
+data/
+data_val/
+data_unknown/
+checkpoints/
+viz/
+viz_new/

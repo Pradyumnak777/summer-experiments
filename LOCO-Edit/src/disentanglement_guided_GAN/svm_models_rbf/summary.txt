@@ -1,0 +1,23 @@
+rbf svm, median split: every train frame, labels from data_utils.py (above/below the median), C/gamma by 3-fold grouped cv on the train frames
+grid: C [0.1, 1.0, 10.0], gamma x512 [0.1, 1.0, 10.0]
+
+intensity  (trained on 9277 frames, 7241 support vectors, best C 0.1, gamma 1.0/512, cv acc 0.694)
+                          rbf    linear
+  train acc              0.749     0.765
+  val acc                0.707     0.655
+  val spearman           0.474     0.438
+  directions on val: consistency 0.944 (1 = same everywhere) | cos w/ linear normal +0.629 +- 0.023 | cos of mean dir +0.666 | median |grad| 0.121
+
+area  (trained on 9277 frames, 7556 support vectors, best C 1.0, gamma 0.1/512, cv acc 0.569)
+                          rbf    linear
+  train acc              0.726     0.715
+  val acc                0.582     0.565
+  val spearman           0.260     0.210
+  directions on val: consistency 0.999 (1 = same everywhere) | cos w/ linear normal +0.905 +- 0.001 | cos of mean dir +0.906 | median |grad| 0.306
+
+aspect  (trained on 9277 frames, 8383 support vectors, best C 1.0, gamma 0.1/512, cv acc 0.549)
+                          rbf    linear
+  train acc              0.624     0.634
+  val acc                0.532     0.519
+  val spearman           0.072     0.048
+  directions on val: consistency 0.999 (1 = same everywhere) | cos w/ linear normal +0.858 +- 0.001 | cos of mean dir +0.858 | median |grad| 0.219

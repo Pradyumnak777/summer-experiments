@@ -1,0 +1,9 @@
+#model files (the rbf svms are 15-35 MB each), the summary txts next to them are still tracked
+*.joblib
+*.npy
+
+#figures and raw per-frame outputs
+combined_viz/*/
+generated_cells/
+testing/outputs_svm*/
+custom_metric_outputs/*.csv
